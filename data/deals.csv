@@ -1,0 +1,8 @@
+deal_id,deal_name,manager_name,trustee_name,issuer_name,deal_closed_date,reinvestment_end_date,collection_acc_principal_balance,cur_collat_balance,avg_price_assets,CAA1ORCCCBELOW,pct_fixed,was,equity_nav_90
+CADOG13,Madison Park Euro Funding XIII,Credit Suisse First Boston,BNY Mellon Corporate Trustee Services,Madison Park Euro Funding,20/03/2019,15/10/2023,-17416391.97,520969330,94.61953869,0.071520687,10.63,4.09644,0
+HALCE14,Segovia European CLO 1-2014,HPS Investment Partners,U.S. Bank Trustees,Segovia European CLO,17/12/2014,15/04/2026,-3531871.55,404475135.7,94.26704126,0.075390369,6.27,4.009621,36.9840688
+HENLEY2,Henley CLO II,Napier Park Global Capital,U.S. Bank Trustees,Henley CLO,10/06/2020,25/01/2026,12934233.68,388879440,95.1813068,0.02438932,,4.171675,59.165544
+HENLEY3,Henley CLO III,Napier Park Global Capital,U.S. Bank Trustees,Henley CLO,25/11/2020,15/12/2026,12968162.13,389447067.3,95.23662724,0.0212308,14.78,4.142141,55.6849356
+JUBIL19,Jubilee CLO 2017-XIX,Alcentra,Delaware Trust Company,Jubilee CLO,13/12/2017,25/01/2022,-14355441.34,460813568.9,94.43957187,0.053960897,7.5,3.81472,35.6387913
+SPAUL9,St. Paul's CLO IX,Intermediate Capital Group,Citibank (London),St. Paul's CLO,31/05/2018,20/10/2026,-13891474.21,420247280.8,93.71013632,0.04760542,12.5,4.440248,42.6360147
+VOYE2,Voya Euro CLO II,Voya Alternative Asset Management,U.S. Bank,Voya Euro CLO,24/06/2019,15/01/2026,2194574.46,399283580.2,95.65259391,0.051122396,2.8,3.918976,0
