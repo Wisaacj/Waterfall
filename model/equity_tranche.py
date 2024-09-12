@@ -16,7 +16,7 @@ class EquityTranche(Tranche):
         :param balance: the balance of the tranche as of the report_date.
         :param report_date: the date the deal report was generated on.
         """
-        super().__init__('Equity', balance, coupon=0, report_date=report_date)
+        super().__init__('Equity', balance, margin=0, report_date=report_date)
                 
     def pay_interest(self, source: Account, attribute_source: PaymentSource):
         """

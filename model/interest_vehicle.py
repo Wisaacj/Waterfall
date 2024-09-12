@@ -1,8 +1,7 @@
 from . import settings
+from .snapshots import Snapshot
 
 from datetime import date
-
-from .snapshots import Snapshot
 
 
 class InterestVehicle:
@@ -31,6 +30,20 @@ class InterestVehicle:
         
     @property
     def coupon(self):
+        """
+        An alias of interest rate.
+        """
+        return self.interest_rate
+    
+    @property
+    def spread(self):
+        """
+        An alias of interest rate.
+        """
+        return self.interest_rate
+    
+    @property
+    def margin(self):
         """
         An alias of interest rate.
         """

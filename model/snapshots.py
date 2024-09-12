@@ -55,7 +55,7 @@ class TrancheSnapshot(Snapshot):
     principal_paid: float = 0
     pct_principal: float = 0
     pct_amortization: float = 0
-    coupon: float = 0
+    margin: float = 0
     
     
 @dataclass

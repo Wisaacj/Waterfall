@@ -1,10 +1,12 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
+from . import settings
 from .account import Account
 from .interest_vehicle import InterestVehicle
 from .snapshots import *
 from .enums import *
+from .forward_rate_curve import ForwardRateCurve
 
 
 class Tranche(InterestVehicle):
@@ -15,21 +17,25 @@ class Tranche(InterestVehicle):
         self,
         rating: str,
         balance: float,
-        coupon: float,
+        margin: float,
         report_date: date,
+        forward_rate_curve: ForwardRateCurve = None,
+        is_floating_rate: bool = True,
     ):
         """
         Instantiates a Tranche.
         
         :param rating: the seniority of the tranche.
         :param balance: the tranche's principal balance.
-        :param coupon: the coupon paid on the tranche.
+        :param margin: the margin paid on the tranche.
         :param report_date: the date the structured deal report was generated on.
         """
-        super().__init__(balance, coupon)
+        super().__init__(balance, margin)
         
         self.rating = rating
         self.initial_balance = balance
+        self.is_floating_rate = is_floating_rate
+        self.forward_rate_curve = forward_rate_curve
         
         self.deferred_interest = 0
         self.last_simulation_date = report_date
@@ -75,7 +81,6 @@ class Tranche(InterestVehicle):
         
         year_factor = self.calc_year_factor(simulate_until)
         self.accrue_interest(year_factor)
-
         self.take_snapshot(simulate_until)
 
         self.period_accrual = 0
@@ -88,7 +93,15 @@ class Tranche(InterestVehicle):
         
         :param year_factor: the proportion of the year to calculate interest for.
         """
-        accrual = (self.balance + self.deferred_interest) * year_factor * self.interest_rate
+        if self.is_floating_rate:
+            start_date = self.last_simulation_date
+            end_date = self.last_simulation_date + relativedelta(days=int(year_factor * settings.DCF_DENOMINATOR))
+            base_rate = self.forward_rate_curve.get_average_rate(start_date, end_date)
+            period_rate = base_rate + self.spread
+            accrual = (self.balance + self.deferred_interest) * year_factor * period_rate
+        else:
+            accrual = (self.balance + self.deferred_interest) * year_factor * self.margin
+
         self.interest_accrued += accrual
         self.period_accrual += accrual
     
@@ -163,7 +176,7 @@ class Tranche(InterestVehicle):
         
         return tranche_rating_map[self.rating]
             
-    def take_snapshot(self, as_of_date: date):
+    def take_snapshot(self, as_of: date):
         """
         Takes a snapshot of this Tranche's attributes.
         
@@ -171,8 +184,8 @@ class Tranche(InterestVehicle):
         :param initial: a bool indicating whether this is the initial snapshot of the tranche's attributes or not.
         """
         snapshot = TrancheSnapshot(
-            date = as_of_date,
-            coupon = self.coupon,
+            date = as_of,
+            margin = self.margin,
             balance = self.balance,
             interest_accrued = self.interest_accrued,
             deferred_interest = self.deferred_interest,

@@ -13,7 +13,8 @@ from model import (
     CLO,
     WaterfallItem,
     CashflowWaterfall,
-    Portfolio
+    Portfolio,
+    ForwardRateCurve
 )
 
 
@@ -27,6 +28,7 @@ class CLOFactory:
             deal_data: pd.DataFrame,
             tranche_data: pd.DataFrame,
             collateral_data: pd.DataFrame,
+            forward_rates: pd.DataFrame,
             cpr: float,
             cdr: float,
             recovery_rate: float,
@@ -40,6 +42,7 @@ class CLOFactory:
         self.deal_data = deal_data
         self.tranche_data = tranche_data
         self.collateral_data = collateral_data
+        self.forward_rates = forward_rates
 
         # Assumptions
         self.cpr = cpr
@@ -58,7 +61,8 @@ class CLOFactory:
         self.reinvestment_end_date = parser.parse(self.deal_data['reinvestment_end_date']).date()
 
     def build(self):
-        portfolio = self.build_portfolio()
+        forward_rate_curve = self.build_forward_rate_curve()
+        portfolio = self.build_portfolio(forward_rate_curve)
         principal_account, interest_account = self.build_cash_accounts()
         debt_tranches, equity_tranche = self.build_tranches()
         senior_fee, junior_fee = self.build_fees()
@@ -84,6 +88,11 @@ class CLOFactory:
             recovery_rate=self.recovery_rate,
             reinvestment_maturity_months=self.reinvestment_maturity_months,
         )
+    
+    def build_forward_rate_curve(self):
+        dates = [parser.parse(d).date() for d in self.forward_rates['date']]
+        rates = self.forward_rates['rate'].values
+        return ForwardRateCurve(dates, rates)
 
     def build_waterfall(self, payment_method: str, senior_fee: Fee, junior_fee: Fee, debt_tranches: list[Tranche], equity_tranche: EquityTranche):
         payment_map = {
@@ -148,14 +157,16 @@ class CLOFactory:
 
         return principal_account, interest_account
 
-    def build_portfolio(self):
+    def build_portfolio(self, forward_rate_curve: ForwardRateCurve):
         assets = []
 
         for i, item in self.collateral_data.iterrows():
             id = item['asset_name']
             balance = int(item['face_value'].replace(',',''))
             price = item['mark_value'] / 100
-            coupon = item['spread'] / 100
+            spread = item['spread'] / 100
+            asset_type = item['type']
+            is_floating_rate = asset_type.upper() == "LOAN"
             maturity_date = parser.parse(item['maturity_date']).date()
 
             # Don't add matured assets to the portfolio.
@@ -166,7 +177,7 @@ class CLOFactory:
                 id=id,
                 balance=balance,
                 price=price,
-                coupon=coupon,
+                spread=spread,
                 payment_frequency=self.payment_frequency,
                 report_date=self.report_date,
                 next_payment_date=self.report_date+self.payment_interval, # Ask about this
@@ -174,6 +185,8 @@ class CLOFactory:
                 cpr=self.cpr,
                 cdr=self.cdr,
                 recovery_rate=self.recovery_rate,
+                forward_rate_curve=forward_rate_curve,
+                is_floating_rate=is_floating_rate,
             )
             assets.append(asset)
 

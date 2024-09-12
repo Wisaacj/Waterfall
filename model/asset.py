@@ -1,31 +1,34 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
+from . import settings
 from .account import Account
 from .interest_vehicle import InterestVehicle
 from .snapshots import *
+from .forward_rate_curve import ForwardRateCurve
 
 
 class Asset(InterestVehicle):
     """
-    Class representing an Asset.
+    Class representing an Asset which may be a floating rate or fixed rate.
     """
-    def __init__(self, id: str, balance: float, price: float, coupon: float, payment_frequency: int, 
-        report_date: date, next_payment_date: date, maturity_date: date, cpr: float, cdr: float, recovery_rate: float):
+    def __init__(self, id: str, balance: float, price: float, spread: float, payment_frequency: int, 
+        report_date: date, next_payment_date: date, maturity_date: date, cpr: float, cdr: float, recovery_rate: float,
+        forward_rate_curve: ForwardRateCurve, is_floating_rate: bool):
         """
         Instantiates an asset.
         
         :param id: the asset's ISIN or reinvestment name.
         :param balance: the balance of the asset as of the report_date.
         :param price: the price of the asset as of the report_date.
-        :param coupon: the coupon paid on the asset as of the report_date 
+        :param spread: the spread paid on the asset. 
         :param payment_frequency: the number of times the asset pays per year.
         :param report_date: the date the deal report was generated on.
         :param next_payment_date: the next date the asset will pay.
         :param maturity_date: the date the asset matures
         """
         # Initialise the last_simulation_date to the report_date.
-        super().__init__(balance, coupon, report_date)
+        super().__init__(balance, spread, report_date)
         
         self.name = id
         
@@ -34,6 +37,8 @@ class Asset(InterestVehicle):
         self.cpr = cpr
         self.cdr = cdr
         self.recovery_rate = recovery_rate
+        self.is_floating_rate = is_floating_rate
+        self.forward_rate_curve = forward_rate_curve
         
         # Dates.
         self.maturity = maturity_date
@@ -86,10 +91,6 @@ class Asset(InterestVehicle):
             
         # Work out the proportion of the year we are simulating over here.
         year_factor = self.calc_year_factor(simulate_until)
-
-        if year_factor < 0:
-            pass
-        
         # Accrue interest for this period.
         self.accrue_interest(year_factor)
         
@@ -196,6 +197,24 @@ class Asset(InterestVehicle):
         self.principal_paid = 0
         
         return amount
+    
+    def accrue_interest(self, year_factor: float) -> None:
+        """
+        Accrues interest on the balance for a given period
+        
+        :param year_factor: a period of time to accrue interest, expressed as a percentage of a year.
+        """
+        if self.is_floating_rate:
+            start_date = self.last_simulation_date
+            end_date = start_date + relativedelta(days=int(year_factor * settings.DCF_DENOMINATOR))
+            base_rate = self.forward_rate_curve.get_average_rate(start_date, end_date)
+            period_rate = base_rate + self.spread
+            accrual = self.balance * year_factor * period_rate
+        else:
+            accrual = self.balance * year_factor * self.coupon
+
+        self.interest_accrued += accrual
+        self.period_accrual += accrual
         
     def calc_prior_payment_date(self, comparisonDate: date) -> date:
         """
@@ -235,5 +254,6 @@ class Asset(InterestVehicle):
             interest_accrued=self.interest_accrued,
             period_accrual=self.period_accrual,
             recovered_principal=self.recovered_principal,
-            interest_rate=self.coupon,
+            # TODO: Make this base_rate + spread
+            interest_rate=self.spread,
         ))
