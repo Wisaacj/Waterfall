@@ -56,9 +56,9 @@ class CLOFactory:
         self.junior_management_fee = self.deal_data['deal_sub_mgt_fees'] / 100
 
         # Dates
-        self.reinvestment_end_date = parser.parse(self.deal_data['reinvestment_enddate']).date()
-        self.next_payment_date = parser.parse(self.deal_data['next_pay_date']).date()
-        self.non_call_end_date = parser.parse(self.deal_data['non_call_date']).date()
+        self.reinvestment_end_date = parser.parse(self.deal_data['reinvestment_enddate'], dayfirst=True).date()
+        self.next_payment_date = parser.parse(self.deal_data['next_pay_date'], dayfirst=True).date()
+        self.non_call_end_date = parser.parse(self.deal_data['non_call_date'], dayfirst=True).date()
 
     def build(self):
         portfolio = self.portfolio_factory.build()
@@ -147,7 +147,7 @@ class CLOFactory:
     def build_cash_accounts(self):
         principal_balance = self.deal_data['collection_acc_principal_bal']
         principal_account = Account(principal_balance)
-        interest_account = Account(0)
+        interest_account = Account(2710770.13) # Remove this hard-coded value later
 
         return principal_account, interest_account
     
@@ -170,13 +170,16 @@ class PortfolioFactory:
 
     def build_asset(self, asset_data: pd.Series) -> Asset:
         figi = asset_data.get('bbg_id')
+        if not pd.notna(figi):
+             figi = asset_data.get('loanxid')
+
         asset_kind = asset_data.get('type').lower()
         balance = int(asset_data.get('facevalue'))
         price = asset_data.get('mark_value') / 100
         coupon = asset_data.get('grosscoupon') / 100
         payment_frequency = int(asset_data.get('pay_freq'))
-        next_payment_date = parser.parse(asset_data['next_pay_date']).date()
-        maturity_date = parser.parse(asset_data['maturitydate']).date()
+        next_payment_date = parser.parse(asset_data['next_pay_date'], dayfirst=True).date()
+        maturity_date = parser.parse(asset_data['maturitydate'], dayfirst=True).date()
 
         return (Loan if asset_kind == 'loan' else Bond)(
             figi=figi,
