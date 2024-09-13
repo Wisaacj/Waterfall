@@ -39,9 +39,9 @@ def main():
     model = factory.build()
     print("    > Model built")
 
-    print(f"Running simulation: Selling portfolio on {accrual_date} and liquidating {deal_id} on {liquidation_date}...")
+    print(f"Running scenario: Selling portfolio on {accrual_date} and liquidating {deal_id} on {liquidation_date}...")
     model.liquidate(accrual_date, liquidation_date)
-    print("    > Simulation complete")
+    print("    > Scenario simulation complete")
     
     print("Writing results to disk...")
     path = ResultsWriter(model, args.deal_id).write_results()
@@ -50,27 +50,26 @@ def main():
 
 def debug():
     deal_id = "SCULE7"
-    accrual_date = date.today()
-    liquidation_date = date.today() + relativedelta(days=20)
+    accrual_date = date.today() + relativedelta(days=14)
+    liquidation_date = date(2024, 10, 15)
 
-    # Load deal data from disk.
-    print(f"\nLoading data for {deal_id} from disk...")
+    print(f"\nLoading deal, tranche, & loan data for {deal_id} from disk...")
     deal, loans, tranches = data_source.load_data(deal_id)
-    print(f"> Loaded collateral data")
+    print(f"    > Loaded data")
 
     print(f"Building model of {deal_id}...")
     factory = CLOFactory(deal, tranches, loans, 0, 0, 1, 4, 12, 72)
     model = factory.build()
-    print("> Model built")
+    print("    > Model built")
 
-    print(f"Selling portfolio on {accrual_date} and liquidating {deal_id} on {liquidation_date}...")
+    print(f"Running scenario: Selling portfolio on {accrual_date} and liquidating {deal_id} on {liquidation_date}...")
     model.liquidate(accrual_date, liquidation_date)
-    print("> Simulation complete")
+    print("    > Scenario simulation complete")
     
     print("Writing results to disk...")
     path = ResultsWriter(model, deal_id).write_results()
-    print(f"> Results written to '{path}'\n")
+    print(f"    > Results written to '{path}'\n")
 
 
 if __name__ == "__main__":
-    main()
+    debug()
