@@ -32,11 +32,11 @@ class AssetSnapshot(Snapshot):
     """Represents a snapshot of an Asset."""
     balance: float
     principal_paid: float
-    interest_paid: float
     scheduled_principal: float
     unscheduled_principal: float
     defaulted_principal: float
     recovered_principal: float
+    interest_paid: float
     period_accrual: float
     interest_accrued: float
     interest_rate: float
