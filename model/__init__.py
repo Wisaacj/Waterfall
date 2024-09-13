@@ -1,5 +1,5 @@
 from .account import Account
-from .asset import Asset
+from .asset import Asset, Loan, Bond
 from .fee import Fee
 from .collateralised_loan_obligation import CLO
 from .enums import WaterfallItem

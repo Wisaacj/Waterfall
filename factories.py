@@ -7,6 +7,8 @@ from dateutil.relativedelta import relativedelta
 from model import (
     Account,
     Asset,
+    Loan, 
+    Bond,
     Tranche,
     EquityTranche,
     Fee,
@@ -176,9 +178,8 @@ class PortfolioFactory:
         next_payment_date = parser.parse(asset_data['next_pay_date']).date()
         maturity_date = parser.parse(asset_data['maturitydate']).date()
 
-        return Asset(
+        return (Loan if asset_kind == 'loan' else Bond)(
             figi=figi,
-            kind=asset_kind,
             balance=balance,
             price=price,
             coupon=coupon,

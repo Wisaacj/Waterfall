@@ -11,12 +11,12 @@ class Asset(InterestVehicle):
     """
     Class representing an Asset.
     """
-    def __init__(self, figi: str, kind: str, balance: float, price: float, coupon: float, payment_frequency: int, 
+    def __init__(self, figi: str, balance: float, price: float, coupon: float, payment_frequency: int, 
         report_date: date, next_payment_date: date, maturity_date: date, cpr: float, cdr: float, recovery_rate: float):
         """
         Instantiates an asset.
         
-        :param id: the asset's ISIN or reinvestment name.
+        :param figi: the asset's BBG ID or reinvestment name.
         :param balance: the balance of the asset as of the report_date.
         :param price: the price of the asset as of the report_date.
         :param coupon: the coupon paid on the asset as of the report_date 
@@ -29,7 +29,6 @@ class Asset(InterestVehicle):
         super().__init__(balance, coupon, report_date)
         
         self.figi = figi
-        self.kind = kind
         
         # Price, assumptions.
         self.price = price
@@ -41,8 +40,12 @@ class Asset(InterestVehicle):
         self.maturity = maturity_date
         self.report_date = report_date
         self.next_payment_date = next_payment_date
+        self.settlement_date = date(9999, 12, 31)
+        """When the asset is sold and settled."""
+
         self.payment_frequency = payment_frequency
         self.payment_interval = relativedelta(months=(12/payment_frequency))
+
         self.simulating_interim_period = False
         
         # Backdate the interest accrued to the amount accrued between 
@@ -87,7 +90,8 @@ class Asset(InterestVehicle):
             self.simulate(interim_date)
             
         # Work out the proportion of the year we are simulating over here.
-        year_factor = self.calc_year_factor(simulate_until)
+        accrue_until = min(simulate_until, self.settlement_date)
+        year_factor = self.calc_year_factor(accrue_until)
 
         # Accrue interest for this period.
         self.accrue_interest(year_factor)
@@ -117,9 +121,13 @@ class Asset(InterestVehicle):
         
         # 3) For remaining balances:
         self.balance -= prepayments + defaults
+
+        on_payment_date = simulate_until == self.next_payment_date
+        asset_matured = simulate_until >= self.maturity
+        asset_settled = simulate_until >= self.settlement_date
         
         # If we are on a payment date, run the payment process.
-        if (simulate_until == self.next_payment_date):
+        if on_payment_date:
             # Pay off the accrued interest and then reset it.
             self.interest_paid += self.interest_accrued
             self.interest_accrued = 0
@@ -127,7 +135,7 @@ class Asset(InterestVehicle):
             # Bump the next payment date forward by the payment interval.
             self.next_payment_date += self.payment_interval
         
-        if (simulate_until >= self.maturity):
+        if asset_matured:
             # Scheduled principal is the remaining balance on maturity.
             self.scheduled_principal = self.balance
             
@@ -141,11 +149,22 @@ class Asset(InterestVehicle):
             
             # Set maturity to be 31/12/9999 to avoid running this condition again.
             self.maturity = date(9999, 12, 31)
+
+        # Asset is sold or portfolio is liquidated.
+        if asset_settled:
+            # Sell the asset into the market today.
+            proceeds = self.price * self.balance
+
+            self.principal_paid += proceeds
+            self.unscheduled_principal += proceeds
+
+            # Set the balance to 0 once the asset has sold and settled.
+            self.balance = 0
         
-        # Finally, we must save the last date that this simulation was run until, which is the end of this simulation.
-        self.last_simulation_date = simulate_until
+        # Finally, we must save the last date that this simulation was run until.
+        self.last_simulation_date = accrue_until
         
-        # If we are simulating until an actionDate rather than an original simulate_until,
+        # If we are simulating until an interm_date rather than an original simulate_until,
         # we are at risk of not accurately tracking the flow of principal because we subdivide the
         # original simulation period into at least two segments, but only take a snapshot in the last segment.
         # The following variables keep track of the principal through the subdivided segments.
@@ -174,10 +193,6 @@ class Asset(InterestVehicle):
         :return: the amount of interest swept.
         """
         amount = self.interest_paid
-
-        if amount < 0:
-            raise Exception()
-
         destination.credit(amount)
         self.interest_paid = 0
         
@@ -195,25 +210,6 @@ class Asset(InterestVehicle):
         self.principal_paid = 0
         
         return amount
-    
-    def liquidate(self, accrual_date: date):
-        # Loans trade with delayed comp (T+10), while bonds trade with lesser delayed
-        # comp (T+2). That is, we continue to earn interest on loans until T+10 and
-        # bonds until T+2.
-        if self.kind == 'loan':
-            settlement_date = day_counter.add_uk_business_days(accrual_date, 10)
-        elif self.kind == 'bond':
-            settlement_date = day_counter.add_uk_business_days(accrual_date, 2)
-        else:
-            raise ValueError(f"unknown asset kind: cannot liquidate assets of kind {self.kind}")
-        
-        # Accrue interest on the asset until the comp period is over.
-        self.simulate(settlement_date)
-
-        # Sell the asset into the market
-        self.principal_paid += self.price * self.balance
-        # The asset has been liquidated so its balance is effectively zero.        
-        self.balance = 0
         
     def calc_prior_payment_date(self, comparison_date: date) -> date:
         """
@@ -255,3 +251,23 @@ class Asset(InterestVehicle):
             recovered_principal=self.recovered_principal,
             interest_rate=self.coupon,
         ))
+
+
+class Loan(Asset):
+    """
+    Class representing a floating-rate asset.
+    """
+    def liquidate(self, accrual_date: date):
+        # Loans trade with delayed comp (T+10). That is, they continue to earn interest 
+        # until T+10 bonds.
+        self.settlement_date = day_counter.add_uk_business_days(accrual_date, 10)
+
+
+class Bond(Asset):
+    """
+    Class representing a fixed-rate asset.
+    """
+    def liquidate(self, accrual_date: date):
+        # Bonds trade with delayed comp (T+2). That is, they continue to earn interest
+        # until T+2.
+        self.settlement_date = day_counter.add_uk_business_days(accrual_date, 2)
