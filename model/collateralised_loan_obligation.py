@@ -87,20 +87,24 @@ class CLO:
         
         # A history of snapshots.
         self.history = []
-        
-        # Take a snapshot of the inital values of the CLO's attributes.
+        # Take a snapshot of the CLO before simulating.
         self.take_snapshot()
         
         self.next_payment_date = next_payment_date
-        self.calc_first_simulation_date(report_date)    
+        self.calc_first_simulation_date(report_date)
+
         self.non_call_end_date = non_call_end_date
         self.reinvestment_end_date = reinvestment_end_date
         
         self.payment_frequency = payment_frequency
         self.payment_interval = relativedelta(months=(12/payment_frequency))
+
+        # Whether or not the CLO is in the process of being liquidated.
+        self.in_liquidation = False
+        self.liquidation_date = date(9999, 12, 31)
         
         # We need to backdate all tranche and fee accruals from the last payment date to the report date.
-        # We do this by initialising the lastPaymentDate of the tranches and fees to the prior payment date.
+        # We do this by initialising the prior_payment_date of the tranches and fees to the prior payment date.
         prior_payment_date = self.next_payment_date - self.payment_interval
         
         for tranche in self.tranches:
@@ -118,12 +122,18 @@ class CLO:
         return 'CLO'
     
     @property
+    def debt_tranches(self) -> list[Tranche]:
+        """
+        Returns a list of debt tranches.
+        """
+        return [tranche for tranche in self.tranches if not tranche.is_equity_tranche]
+    
+    @property
     def continue_simulating(self) -> bool:
         """
-        Returns whether or not to continue simulating the CLO. This checks if the ACB is greater than zero 
-        and whether the option to stop simulating once all original debt balances reach zero has been enabled.
+        Returns whether or not to continue simulating the CLO.
         """
-        return self.aggregate_collateral_balance > 0
+        return self.aggregate_collateral_balance > 0 or (self.in_liquidation and self.simulate_until <= self.liquidation_date) or self.portfolio.total_interest_accrued > 0
         
     @property
     def total_debt(self) -> float:
@@ -140,13 +150,6 @@ class CLO:
         return self.portfolio.total_asset_balance + self.principal_account.balance
     
     @property
-    def debt_tranches(self) -> list[Tranche]:
-        """
-        Returns a list of debt tranches.
-        """
-        return [tranche for tranche in self.tranches if not tranche.is_equity_tranche]
-    
-    @property
     def equity_par_nav(self) -> float:
         """
         Returns the net asset value of the equity tranche.
@@ -158,13 +161,13 @@ class CLO:
         Simulates the CLO's cashflows until all the assets have matured and the principal balance
         has been paid off.
         """
-        while self.continue_simulating:   
+        while self.continue_simulating:
             self.portfolio.simulate(self.simulate_until)
             
-            # Sweep the interest and principal from the portfolio of loans.
+            # Sweep accrued interest and principal paid from the portfolio.
             self.interest_swept = self.portfolio.sweep_interest(self.interest_account)
             self.principal_swept = self.portfolio.sweep_principal(self.principal_account)
-            
+
             for fee in self.management_fees:
                 fee.simulate(self.simulate_until)
             
@@ -176,6 +179,7 @@ class CLO:
             if self.simulate_until <= self.reinvestment_end_date:
                 self.principal_reinvested = self.reinvest()
             
+            # Run the cashflow waterfall on payment dates.
             if self.simulate_until == self.next_payment_date:
                 # Only update the fees' balances on a payment month. Furthermore, their balances are set *before* 
                 # payments are run down the principal waterfall. This is an peculiarity with the purpose of 
@@ -195,6 +199,20 @@ class CLO:
             self.last_simulation_date = self.simulate_until
             # Bump the next simulation date forward. Simulate at 1 month intervals.
             self.simulate_until = self.simulate_until + relativedelta(months=1)
+
+    def liquidate(self, accrual_date: date, liquidation_date: date):
+        self.in_liquidation = True
+        self.liquidation_date = liquidation_date
+
+        self.portfolio.liquidate(accrual_date)
+
+        for tranche in self.tranches:
+            tranche.notify_of_liquidation(liquidation_date)
+
+        for fee in self.management_fees:
+            fee.notify_of_liquidation(liquidation_date)
+
+        self.simulate()
         
     def reinvest(self) -> float:
         """

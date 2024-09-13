@@ -31,17 +31,40 @@ class Portfolio:
         :param simulate_until: as the name suggests.
         """
         if simulate_until == self.last_simulation_date:
-            return
+            raise Exception("debug this or I will shank you")
         
         for asset in self.assets:
             asset.simulate(simulate_until)
                 
         self.last_simulation_date = simulate_until
+
+    def liquidate(self, accrual_date: date):
+        """
+        Liquidates the entire portfolio of assets on the accrual date.
+
+        Note that this doesn't handle principal proceeds yet.
+        """
+        for asset in self.assets:
+            asset.liquidate(accrual_date)
+
+    @property
+    def total_interest_accrued(self):
+        """
+        Returns the total interest accrued, but not paid, on the portfolio.
+        """
+        return sum(asset.interest_accrued for asset in self.assets)
+    
+    @property
+    def total_interest_paid(self):
+        """
+        Returns the total interest paid, but not swept, by assets in the portfolio.
+        """
+        return sum(asset.interest_paid for asset in self.assets)
     
     @property
     def total_asset_balance(self) -> float:
         """
-        Returns the total principal balance of the portfolio.
+        Returns the portfolio par.
         """
         return sum(asset.balance for asset in self.assets)
     

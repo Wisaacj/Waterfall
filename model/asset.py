@@ -1,6 +1,7 @@
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
+from . import day_counter
 from .account import Account
 from .interest_vehicle import InterestVehicle
 from .snapshots import *
@@ -10,7 +11,7 @@ class Asset(InterestVehicle):
     """
     Class representing an Asset.
     """
-    def __init__(self, id: str, balance: float, price: float, coupon: float, payment_frequency: int, 
+    def __init__(self, figi: str, kind: str, balance: float, price: float, coupon: float, payment_frequency: int, 
         report_date: date, next_payment_date: date, maturity_date: date, cpr: float, cdr: float, recovery_rate: float):
         """
         Instantiates an asset.
@@ -27,7 +28,8 @@ class Asset(InterestVehicle):
         # Initialise the last_simulation_date to the report_date.
         super().__init__(balance, coupon, report_date)
         
-        self.name = id
+        self.figi = figi
+        self.kind = kind
         
         # Price, assumptions.
         self.price = price
@@ -62,9 +64,9 @@ class Asset(InterestVehicle):
         
     def __str__(self) -> str:
         """
-        Returns the unique id.
+        Returns this asset's Bloomberg ID.
         """
-        return self.name
+        return self.figi
     
     def simulate(self, simulate_until: date):
         """
@@ -72,8 +74,8 @@ class Asset(InterestVehicle):
         
         :param simulate_until: as the name suggests.
         """
-        if simulate_until == self.last_simulation_date:
-            return
+        # if simulate_until == self.last_simulation_date:
+        #     return
         
         # If there is a payment date before the end of the simulation, we will instead simulate until that date
         # and then remove all money before proceeding with the following simulation period.
@@ -87,9 +89,6 @@ class Asset(InterestVehicle):
         # Work out the proportion of the year we are simulating over here.
         year_factor = self.calc_year_factor(simulate_until)
 
-        if year_factor < 0:
-            pass
-        
         # Accrue interest for this period.
         self.accrue_interest(year_factor)
         
@@ -177,7 +176,7 @@ class Asset(InterestVehicle):
         amount = self.interest_paid
 
         if amount < 0:
-            pass
+            raise Exception()
 
         destination.credit(amount)
         self.interest_paid = 0
@@ -196,20 +195,39 @@ class Asset(InterestVehicle):
         self.principal_paid = 0
         
         return amount
+    
+    def liquidate(self, accrual_date: date):
+        # Loans trade with delayed comp (T+10), while bonds trade with lesser delayed
+        # comp (T+2). That is, we continue to earn interest on loans until T+10 and
+        # bonds until T+2.
+        if self.kind == 'loan':
+            settlement_date = day_counter.add_uk_business_days(accrual_date, 10)
+        elif self.kind == 'bond':
+            settlement_date = day_counter.add_uk_business_days(accrual_date, 2)
+        else:
+            raise ValueError(f"unknown asset kind: cannot liquidate assets of kind {self.kind}")
         
-    def calc_prior_payment_date(self, comparisonDate: date) -> date:
+        # Accrue interest on the asset until the comp period is over.
+        self.simulate(settlement_date)
+
+        # Sell the asset into the market
+        self.principal_paid += self.price * self.balance
+        # The asset has been liquidated so its balance is effectively zero.        
+        self.balance = 0
+        
+    def calc_prior_payment_date(self, comparison_date: date) -> date:
         """
         Calculates the payment date prior to a comparison date.
         
-        :param comparisonDate: the date you want the prior payment date to.
+        :param comparison_date: the date you want the prior payment date to.
         :return: the prior payment date.
         """
-        priorPaymentDate = self.next_payment_date
+        prior_payment_date = self.next_payment_date
         
-        while priorPaymentDate > comparisonDate:
-            priorPaymentDate -= self.payment_interval
+        while prior_payment_date > comparison_date:
+            prior_payment_date -= self.payment_interval
         
-        return priorPaymentDate
+        return prior_payment_date
     
     def calc_backdated_accrued_interest(self) -> float:
         """

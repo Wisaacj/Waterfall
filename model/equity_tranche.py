@@ -49,4 +49,5 @@ class EquityTranche(Tranche):
         
         # Log the payment.
         self.last_snapshot.principal_paid += amount_paid
+        self.last_snapshot.balance -= amount_paid
         

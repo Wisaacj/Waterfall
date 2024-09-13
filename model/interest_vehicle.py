@@ -1,7 +1,6 @@
-from . import settings
-
 from datetime import date
 
+from . import day_counter
 from .snapshots import Snapshot
 
 
@@ -53,10 +52,10 @@ class InterestVehicle:
         :return: the year factor.
         """
         if from_date is not None:
-            return (to_date - from_date).days / settings.DCF_DENOMINATOR
+            return (to_date - from_date).days / day_counter.DCF_DENOMINATOR
         
         # If a from_date is not provided, default it to the last_simulation_date. 
-        return (to_date - self.last_simulation_date).days / settings.DCF_DENOMINATOR
+        return (to_date - self.last_simulation_date).days / day_counter.DCF_DENOMINATOR
     
     def accrue_interest(self, yearFactor: float) -> None:
         """
