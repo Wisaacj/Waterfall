@@ -23,7 +23,7 @@ class Fee(InterestVehicle):
         super().__init__(balance, coupon, report_date)
         
         self.name = fee_name.value
-        self.clo_liquidation_date = date(9999, 12, 31)
+        self.clo_call_date = date(9999, 12, 31)
         
         # Take a snapshot of the inital values of the fee's attributes.
         self.take_snapshot(report_date)
@@ -38,7 +38,7 @@ class Fee(InterestVehicle):
         
         :param simulate_until: as the name suggests.
         """
-        accrue_until = min(simulate_until, self.clo_liquidation_date)
+        accrue_until = min(simulate_until, self.clo_call_date)
         year_factor = self.calc_year_factor(accrue_until)
 
         self.accrue(year_factor)
@@ -73,7 +73,7 @@ class Fee(InterestVehicle):
         """
         Notifies the fee that the CLO will be liquidated shortly.
         """
-        self.clo_liquidation_date = liquidation_date
+        self.clo_call_date = liquidation_date
         
     def log_payment_in_history(self, payment: float):
         """

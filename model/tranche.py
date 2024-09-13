@@ -33,7 +33,7 @@ class Tranche(InterestVehicle):
         
         self.deferred_interest = 0
         self.last_simulation_date = report_date
-        self.clo_liquidation_date = date(9999, 12, 31)
+        self.clo_call_date = date(9999, 12, 31)
         
         # NOTE: This is incorrect. We need to backdate accrued interest on the tranche 
         # like we do the in assets & then take a snapshot.
@@ -73,7 +73,7 @@ class Tranche(InterestVehicle):
         
         :param simulate_until: as the rating suggests.
         """
-        accrue_until = min(simulate_until, self.clo_liquidation_date)
+        accrue_until = min(simulate_until, self.clo_call_date)
         year_factor = self.calc_year_factor(accrue_until)
         self.accrue_interest(year_factor)
 
@@ -86,7 +86,7 @@ class Tranche(InterestVehicle):
         """
         Notifies the tranche that the CLO will be liquidated shortly.
         """
-        self.clo_liquidation_date = liquidation_date
+        self.clo_call_date = liquidation_date
     
     def accrue_interest(self, year_factor: float):
         """
