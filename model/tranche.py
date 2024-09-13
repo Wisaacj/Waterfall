@@ -84,7 +84,7 @@ class Tranche(InterestVehicle):
 
     def notify_of_liquidation(self, liquidation_date: date):
         """
-        Notifies the tranche that the CLO will be liquiated shortly.
+        Notifies the tranche that the CLO will be liquidated shortly.
         """
         self.clo_liquidation_date = liquidation_date
     

@@ -71,7 +71,7 @@ class Fee(InterestVehicle):
 
     def notify_of_liquidation(self, liquidation_date: date):
         """
-        Notifies the fee that the CLO will be liquiated shortly.
+        Notifies the fee that the CLO will be liquidated shortly.
         """
         self.clo_liquidation_date = liquidation_date
         

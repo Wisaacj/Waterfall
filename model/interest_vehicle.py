@@ -57,12 +57,12 @@ class InterestVehicle:
         # If a from_date is not provided, default it to the last_simulation_date. 
         return (to_date - self.last_simulation_date).days / day_counter.DCF_DENOMINATOR
     
-    def accrue_interest(self, yearFactor: float) -> None:
+    def accrue_interest(self, year_factor: float) -> None:
         """
         Accrues interest on the balance for a given period
         
-        :param yearFactor: a period of time to accrue interest, expressed as a percentage of a year.
+        :param year_factor: a period of time to accrue interest, expressed as a percentage of a year.
         """
-        accrual = self.balance * yearFactor * self.interest_rate
+        accrual = self.balance * year_factor * self.interest_rate
         self.interest_accrued += accrual
         self.period_accrual += accrual
