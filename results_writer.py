@@ -3,9 +3,7 @@ import numpy as np
 import pandas as pd
 
 from pathlib import Path
-from openpyxl import Workbook
 from collections import Counter
-from openpyxl.utils.dataframe import dataframe_to_rows
 from model import CLO, Snapshot
 
 OUTPUT_DIR = Path("outputs")
@@ -37,24 +35,6 @@ class ResultsWriter:
         self._export_asset_histories()
 
         return self.output_dir.absolute()
-    
-    # def _export_asset_histories(self):
-    #     """Exports histories of all assets in the portfolio to a single Excel file."""
-    #     wb = Workbook()
-    #     wb.remove(wb.active) # Remove the default sheet
-
-    #     for asset in self.model.portfolio.assets:
-    #         sheet_name = asset.figi
-    #         ws = wb.create_sheet(sheet_name)
-            
-    #         data = [self._snapshot_to_dict(snapshot) for snapshot in asset.history]
-    #         df = pd.DataFrame(data)
-            
-    #         for r in dataframe_to_rows(df, index=False, header=True):
-    #             ws.append(r)
-
-    #     output_file = self.output_path / "Asset CF.xlsx"
-    #     wb.save(output_file)
 
     def _export_asset_histories(self):
         """Exports the history of all assets in the portfolio to a single Excel file."""
@@ -79,7 +59,7 @@ class ResultsWriter:
 
             # Create summary sheet
             date_summary = self._create_summary(df.groupby('date'))
-            date_summary.to_excel(writer, sheet_name='Date Summary')
+            date_summary.to_excel(writer, sheet_name='Portfolio Summary')
 
     def _create_summary(self, grouped: pd.DataFrame):
         """Create a summary DataFrame with weighted average interest rate."""
@@ -99,14 +79,14 @@ class ResultsWriter:
         cashflows_df.to_excel(self.output_path / f"{filename}.xlsx")
 
     @staticmethod
+    def _snapshot_to_dict(snapshot: Snapshot):
+        """Convert a snapshot object into a dictionary."""
+        return {field: getattr(snapshot, field) for field in snapshot.__dataclass_fields__}
+
+    @staticmethod
     def _safe_weighted_average(group):
         """Calculate weighted average, handling zero-sum weights."""
         try:
             return np.average(group['interest_rate'], weights=group['balance'])
         except ZeroDivisionError:
             return 0
-
-    @staticmethod
-    def _snapshot_to_dict(snapshot: Snapshot):
-        """Convert a snapshot object into a dictionary."""
-        return {field: getattr(snapshot, field) for field in snapshot.__dataclass_fields__}

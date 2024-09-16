@@ -1,6 +1,7 @@
 import argparse
 import data_source
 
+from pathlib import Path
 from datetime import date
 from factories import CLOFactory
 from results_writer import ResultsWriter
@@ -20,6 +21,7 @@ def main():
     parser.add_argument("--payment_frequency", type=int, default=4, help="Payment frequency (default: 4)")
     parser.add_argument("--simulation_frequency", type=int, default=1, help="Simulation frequency (default: 12)")
     parser.add_argument("--reinvestment_asset_maturity_months", type=int, default=72, help="Reinvestment asset maturity in months (default: 72)")
+    parser.add_argument("--output_path", type=Path, default=Path("outputs"), help="Path to save the output files (default: ./outputs)")
 
     args = parser.parse_args()
 
@@ -44,7 +46,7 @@ def main():
     print("    > Scenario simulation complete")
     
     print("Writing results to disk...")
-    path = ResultsWriter(model, args.deal_id).write_results()
+    path = ResultsWriter(model, args.deal_id, args.output_path).write_results()
     print(f"    > Results written to '{path}'\n")
 
 
