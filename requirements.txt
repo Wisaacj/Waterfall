@@ -1,3 +1,4 @@
 pandas
 python-dateutil
 govuk-bank-holidays
+pyxirr
