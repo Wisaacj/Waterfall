@@ -17,9 +17,9 @@ def main():
     # Add arguments for each assumption
     parser.add_argument("--cpr", type=float, default=0.0, help="Constant Prepayment Rate (default: 0.0)")
     parser.add_argument("--cdr", type=float, default=0.0, help="Constant Default Rate (default: 0.0)")
-    parser.add_argument("--recovery_rate", type=float, default=0.0, help="Recovery rate (default: 1.0)")    
+    parser.add_argument("--recovery_rate", type=float, default=1.0, help="Recovery rate (default: 1.0)")    
     parser.add_argument("--payment_frequency", type=int, default=4, help="Payment frequency (default: 4)")
-    parser.add_argument("--simulation_frequency", type=int, default=1, help="Simulation frequency (default: 12)")
+    parser.add_argument("--simulation_frequency", type=int, default=12, help="Simulation frequency (default: 12)")
     parser.add_argument("--reinvestment_asset_maturity_months", type=int, default=72, help="Reinvestment asset maturity in months (default: 72)")
     parser.add_argument("--output_path", type=Path, default=Path("outputs"), help="Path to save the output files (default: ./outputs)")
 
