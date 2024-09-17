@@ -1,14 +1,14 @@
 from typing import Any, Callable
 
 from .account import Account
-from .enums import PaymentSource
+from .enums import PaymentSource, WaterfallItem
 
 
 class CashflowWaterfall:
     """
     Class representing a cashflow waterfall.
     """
-    def __init__(self, waterfall: dict[Any, Callable], order: list[Any]):
+    def __init__(self, waterfall: dict[WaterfallItem, Callable[[Account, PaymentSource], Any]], order: list[WaterfallItem]):
         """
         Instantiates a cashflow waterfall.
         
