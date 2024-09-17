@@ -10,7 +10,7 @@ class Fee(InterestVehicle):
     """
     Class representing a fee with an interest rate and fixed component.
     """
-    def __init__(self, balance: float, coupon: float, report_date: date, fee_name: WaterfallItem):
+    def __init__(self, balance: float, coupon: float, report_date: date, fee_name: WaterfallItem, fixed_expense: float = 0):
         """
         Instantiates a Fee.
         
@@ -23,6 +23,7 @@ class Fee(InterestVehicle):
         super().__init__(balance, coupon, report_date)
         
         self.name = fee_name.value
+        self.fixed_expense = fixed_expense
         self.clo_call_date = date(9999, 12, 31)
         
         # Take a snapshot of the inital values of the fee's attributes.
@@ -47,14 +48,18 @@ class Fee(InterestVehicle):
         self.last_simulation_date = accrue_until
         self.period_accrual = 0        
     
-    def accrue(self, yearFactor: float):
+    def accrue(self, year_factor: float):
         """
-        Extends the parent class' implementation by also adding a yearFactor adjusted
+        Extends the parent class' implementation by also adding a year_factor adjusted
         fixed expense to the `interest_accrued`.
         
-        :param yearFactor: a period of time to accrue interst, expressed as a percentage of a year.
+        :param year_factor: a period of time to accrue interst, expressed as a percentage of a year.
         """
-        super().accrue_interest(yearFactor)
+        super().accrue_interest(year_factor)
+
+        period_fixed_expense = year_factor * self.fixed_expense
+        self.interest_accrued += period_fixed_expense
+        self.period_accrual += period_fixed_expense
     
     def pay(self, source: Account, attribute_source: PaymentSource):
         """

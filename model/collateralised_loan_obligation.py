@@ -24,7 +24,7 @@ class CLO:
         non_call_end_date: date,
         portfolio: Portfolio,
         tranches: list[Tranche],
-        management_fees: list[Fee],
+        fees: list[Fee],
         interest_waterfall: CashflowWaterfall, 
         principal_waterfall: CashflowWaterfall,
         principal_account: Account,
@@ -34,7 +34,7 @@ class CLO:
         cdr: float,
         recovery_rate: float,
         reinvestment_maturity_months: int,
-    ) -> None:
+    ):
         """
         Instantiates a CLO.
         
@@ -66,7 +66,7 @@ class CLO:
         self.simulate_until = report_date
 
         # Fees
-        self.management_fees = management_fees
+        self.fees = fees
         
         # Tranches
         self.tranches = tranches
@@ -111,7 +111,7 @@ class CLO:
             tranche.last_simulation_date = prior_payment_date
         
         # Give the fees their initial balances 
-        for fee in self.management_fees:
+        for fee in self.fees:
             fee.last_simulation_date = prior_payment_date
             fee.balance = self.aggregate_collateral_balance 
             
@@ -168,7 +168,7 @@ class CLO:
             self.interest_swept = self.portfolio.sweep_interest(self.interest_account)
             self.principal_swept = self.portfolio.sweep_principal(self.principal_account)
 
-            for fee in self.management_fees:
+            for fee in self.fees:
                 fee.simulate(self.simulate_until)
             
             for tranche in self.tranches: 
@@ -184,7 +184,7 @@ class CLO:
                 # Only update the fees' balances on a payment month. Furthermore, their balances are set *before* 
                 # payments are run down the principal waterfall. This is an peculiarity with the purpose of 
                 # earning more fees for the CLO manager. 
-                for fee in self.management_fees:
+                for fee in self.fees:
                     fee.balance = self.aggregate_collateral_balance
                 
                 # Run the payments down the cashflow waterfalls.
@@ -209,7 +209,7 @@ class CLO:
         for tranche in self.tranches:
             tranche.notify_of_liquidation(liquidation_date)
 
-        for fee in self.management_fees:
+        for fee in self.fees:
             fee.notify_of_liquidation(liquidation_date)
 
         self.simulate()
@@ -269,7 +269,7 @@ class CLO:
         """
         # We include the equity tranche interest payment which happened on the liquidation date (lastInterestPayment).
         equity_liquidation_value = self.principal_account.balance + self.interest_account.balance + \
-            self.portfolio.total_dirty_market_value - self.total_debt - sum([fee.interest_accrued for fee in self.management_fees]) + \
+            self.portfolio.total_dirty_market_value - self.total_debt - sum([fee.interest_accrued for fee in self.fees]) + \
                 self.equity_tranche.last_interest_payment
             
         return equity_liquidation_value
