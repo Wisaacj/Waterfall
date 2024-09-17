@@ -17,7 +17,6 @@ class Snapshot:
 @dataclass
 class CLOSnapshot(Snapshot):
     """Represents a snapshot of a CLO."""
-    equity_liquidation_value: float = 0
     total_debt_tranches_balance: float = 0
     total_asset_balance: float = 0
     interest_swept: float = 0

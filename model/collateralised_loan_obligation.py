@@ -9,7 +9,7 @@ from .tranche import Tranche
 from .portfolio import Portfolio
 from .snapshots import *
 from .waterfall import CashflowWaterfall
-from .fee import Fee
+from .fee import Fee, IncentiveFee
 
 
 class CLO:
@@ -25,6 +25,7 @@ class CLO:
         portfolio: Portfolio,
         tranches: list[Tranche],
         fees: list[Fee],
+        incentive_fee: IncentiveFee,
         interest_waterfall: CashflowWaterfall, 
         principal_waterfall: CashflowWaterfall,
         principal_account: Account,
@@ -67,6 +68,7 @@ class CLO:
 
         # Fees
         self.fees = fees
+        self.incentive_fee = incentive_fee
         
         # Tranches
         self.tranches = tranches
@@ -170,6 +172,7 @@ class CLO:
 
             for fee in self.fees:
                 fee.simulate(self.simulate_until)
+            self.incentive_fee.simulate(self.simulate_until)
             
             for tranche in self.tranches: 
                 tranche.simulate(self.simulate_until)
@@ -211,6 +214,8 @@ class CLO:
 
         for fee in self.fees:
             fee.notify_of_liquidation(liquidation_date)
+
+        self.incentive_fee.notify_of_liquidation(liquidation_date)
 
         self.simulate()
         
@@ -263,17 +268,6 @@ class CLO:
         return Asset(name, balance, price, coupon, self.payment_frequency, 
             current_date, next_payment_date, maturity, self.cpr, self.cdr, self.recovery_rate)
         
-    def calc_equity_liquidation_value(self) -> float:
-        """
-        Calculates the equity liquidation value of the CLO.
-        """
-        # We include the equity tranche interest payment which happened on the liquidation date (lastInterestPayment).
-        equity_liquidation_value = self.principal_account.balance + self.interest_account.balance + \
-            self.portfolio.total_dirty_market_value - self.total_debt - sum([fee.interest_accrued for fee in self.fees]) + \
-                self.equity_tranche.last_interest_payment
-            
-        return equity_liquidation_value
-        
     def calc_first_simulation_date(self, report_date: date):
         """
         Works out the date from which the simulations should start by stepping back in time
@@ -308,7 +302,6 @@ class CLO:
             principal_reinvested             = self.principal_reinvested,
             interest_account_balance          = self.interest_account.balance,
             principal_account_balance         = self.principal_account.balance,
-            equity_liquidation_value          = self.calc_equity_liquidation_value(),
             total_debt_tranches_balance        = self.total_debt,
             total_asset_balance               = self.portfolio.total_asset_balance,
         ))

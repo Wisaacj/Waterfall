@@ -88,15 +88,58 @@ class Fee(InterestVehicle):
         """
         self.last_snapshot.paid += payment
     
-    def take_snapshot(self, asOfDate: date):
+    def take_snapshot(self, as_of_date: date):
         """
-        Takes a snapshot of the fee's attributes on `asOfDate`.
+        Takes a snapshot of the fee's attributes on `as_of_date`.
         
-        :param asOfDate: the date the snapshot is taken on.
+        :param as_of_date: the date the snapshot is taken on.
         """
         self.history.append(FeeSnapshot(
-            date = asOfDate,
+            date = as_of_date,
             balance = self.balance,
             period_accrual = self.period_accrual,
             accrued = self.interest_accrued
         ))
+
+
+class IncentiveFee(Fee):
+    """
+    Class representing an incentive fee.
+    """
+    def __init__(self, balance: float, irr_hurdle_rate: float, diversion_rate: float, report_date: date):
+        super().__init__(balance, irr_hurdle_rate, report_date, WaterfallItem.IncentiveFee)
+        self.diversion_rate = diversion_rate
+
+    @property
+    def irr_hurdle_rate(self):
+        """
+        An alias for interest rate.
+        """
+        return self.interest_rate
+    
+    def accrue(self, year_factor: float):
+        """
+        Overrides the superclass implementation to increase the balance by the period accrual.
+        """
+        accrual = self.balance * year_factor * self.irr_hurdle_rate
+        self.balance += accrual
+        self.period_accrual += accrual
+
+    def pay(self, source: Account, attribute_source: PaymentSource):
+        """
+        Pays an incentive fee once the balance crosses 0, at which point interest
+        is diverted from the equity holders to the CLO manager.
+        """
+        diverted_funds = source.request_debit(source.balance)
+        self.balance -= diverted_funds
+
+        # Amount diverted from the equity distribution.
+        payment = max(-self.balance, 0) * self.diversion_rate
+
+        # Credit the residual back to the source account.
+        source.credit(diverted_funds - payment)
+
+        # Floor the balance at 0.
+        self.balance = max(self.balance, 0)
+
+        self.log_payment_in_history(payment)

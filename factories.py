@@ -12,6 +12,7 @@ from model import (
     Tranche,
     EquityTranche,
     Fee,
+    IncentiveFee,
     CLO,
     WaterfallItem,
     CashflowWaterfall,
@@ -50,15 +51,9 @@ class CLOFactory:
         self.recovery_rate = recovery_rate
         self.payment_frequency = payment_frequency
         self.payment_interval = relativedelta(months=(12/payment_frequency))
-        self.simulation_frequency = relativedelta(
+        self.simulation_interval = relativedelta(
             months=(12/simulation_frequency))
         self.reinvestment_maturity_months = reinvestment_maturity_months
-
-        # Fees: FIXME don't use hard-coded values
-        self.senior_expenses_fixed_fee = 300_000 
-        self.senior_expenses_variable_fee = 0.000225
-        self.senior_management_fee = self.deal_data['deal_sen_mgt_fees'] / 100
-        self.junior_management_fee = self.deal_data['deal_sub_mgt_fees'] / 100
 
         # Dates
         self.reinvestment_end_date = parser.parse(
@@ -72,12 +67,14 @@ class CLOFactory:
         portfolio = self.portfolio_factory.build()
         principal_account, interest_account = self.build_cash_accounts()
         debt_tranches, equity_tranche = self.build_tranches()
-        expenses_fee, senior_fee, junior_fee = self.build_fees()
+        expenses_fee, senior_fee, junior_fee, incentive_fee = self.build_fees()
 
         interest_waterfall = self.build_waterfall(
-            'pay_interest', expenses_fee, senior_fee, junior_fee, debt_tranches, equity_tranche)
+            'pay_interest', expenses_fee, senior_fee, junior_fee, incentive_fee, 
+            debt_tranches, equity_tranche)
         principal_waterfall = self.build_waterfall(
-            'pay_principal', expenses_fee, senior_fee, junior_fee, debt_tranches, equity_tranche)
+            'pay_principal', expenses_fee, senior_fee, junior_fee, incentive_fee,
+            debt_tranches, equity_tranche)
 
         return CLO(
             report_date=self.report_date,
@@ -87,6 +84,7 @@ class CLOFactory:
             portfolio=portfolio,
             tranches=debt_tranches+[equity_tranche],
             fees=[expenses_fee, senior_fee, junior_fee],
+            incentive_fee=incentive_fee,
             interest_waterfall=interest_waterfall,
             principal_waterfall=principal_waterfall,
             principal_account=principal_account,
@@ -98,7 +96,9 @@ class CLOFactory:
             reinvestment_maturity_months=self.reinvestment_maturity_months,
         )
 
-    def build_waterfall(self, payment_method: str, expenses_fee: Fee, senior_fee: Fee, junior_fee: Fee, debt_tranches: list[Tranche], equity_tranche: EquityTranche):
+    def build_waterfall(self, payment_method: str, expenses_fee: Fee, senior_fee: Fee, 
+                        junior_fee: Fee, incentive_fee: IncentiveFee, debt_tranches: list[Tranche],
+                        equity_tranche: EquityTranche):
         payment_map = {
             expenses_fee.name: expenses_fee.pay,
             senior_fee.name: senior_fee.pay,
@@ -116,22 +116,36 @@ class CLOFactory:
 
         payment_map |= {
             junior_fee.name: junior_fee.pay,
+            incentive_fee.name: incentive_fee.pay,
             WaterfallItem.Equity.name: getattr(equity_tranche, payment_method),
         }
 
         return CashflowWaterfall(payment_map, payment_map.keys())
 
     def build_fees(self):
-        # The fees' balances are set later by the CLO.
-        senior_expenses_fee = Fee(0, self.senior_expenses_variable_fee,
-                               self.report_date, WaterfallItem.SeniorExpensesFee,
-                                 self.senior_expenses_fixed_fee)
-        senior_management_fee = Fee(0, self.senior_management_fee,
-                         self.report_date, WaterfallItem.SeniorMgmtFee)
-        junior_management_fee = Fee(0, self.junior_management_fee,
-                         self.report_date, WaterfallItem.JuniorMgmtFee)
+        # FIXME don't use hard-coded values
+        senior_expenses_fixed_fee = 0#300_000 
+        senior_expenses_variable_fee =0# 0.000225
 
-        return senior_expenses_fee, senior_management_fee, junior_management_fee
+        senior_management_fee = self.deal_data['deal_sen_mgt_fees'] / 100
+        junior_management_fee = self.deal_data['deal_sub_mgt_fees'] / 100
+
+        incentive_fee_balance = self.deal_data['deal_inc_mgt_fee_irr_balances']
+        incentive_fee_hurdle_rate = self.deal_data['deal_inc_mgt_fee_irr_threshold'] / 100
+        incentive_fee_diversion_rate = self.deal_data['deal_inc_mgt_fee_excess_pcts'] / 100
+
+        # The fees' balances are set later by the CLO.
+        senior_expenses_fee = Fee(0, senior_expenses_variable_fee,
+                               self.report_date, WaterfallItem.SeniorExpensesFee,
+                                 senior_expenses_fixed_fee)
+        senior_management_fee = Fee(0, senior_management_fee,
+                         self.report_date, WaterfallItem.SeniorMgmtFee)
+        junior_management_fee = Fee(0, junior_management_fee,
+                         self.report_date, WaterfallItem.JuniorMgmtFee)
+        incentive_fee = IncentiveFee(incentive_fee_balance, incentive_fee_hurdle_rate,
+                                      incentive_fee_diversion_rate, self.report_date)
+
+        return senior_expenses_fee, senior_management_fee, junior_management_fee, incentive_fee
 
     def build_tranches(self):
         debt_tranches = []
@@ -209,7 +223,7 @@ class PortfolioFactory:
 
         asset_params = dict(
             figi=figi,
-            balance=int(asset_data.get('facevalue')),
+            balance=float(asset_data.get('facevalue')),
             price=asset_data.get('mark_value') / 100,
             coupon=coupon,
             payment_frequency=int(asset_data.get('pay_freq')),
