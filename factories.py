@@ -35,16 +35,20 @@ class CLOFactory:
             forward_curve_data: pd.DataFrame,
             cpr: float,
             cdr: float,
+            cpr_lockout_months: int,
+            cdr_lockout_months: int,
             recovery_rate: float,
             payment_frequency: int,
             simulation_frequency: int,
             reinvestment_maturity_months: int,
     ):
-        self.report_date = date(2024, 9, 16) # date.today() # Ask about this...
+        self.report_date = date.today() # Ask about this...
 
         # Factories
         self.tranche_factory = TrancheFactory(tranche_data, self.report_date)
-        self.portfolio_factory = PortfolioFactory(collateral_data, self.report_date, cpr, cdr, recovery_rate)
+        self.portfolio_factory = PortfolioFactory(collateral_data, self.report_date, 
+                                                  cpr, cdr, recovery_rate, 
+                                                  cpr_lockout_months, cdr_lockout_months)
         self.fee_factory = FeeFactory(deal_data, self.report_date)
         self.account_factory = AccountFactory(deal_data)
         self.forward_curve_factory = ForwardRateCurveFactory(forward_curve_data)
@@ -264,14 +268,22 @@ class PortfolioFactory:
     Model factory for building a portfolio of assets underlying a CLO.
     """
 
-    def __init__(self, collateral_data: pd.DataFrame, report_date: date, cpr: float,
-                 cdr: float, recovery_rate: float, forward_rate_curves: dict[str, ForwardRateCurve] = None):
+    def __init__(self, 
+                 collateral_data: pd.DataFrame, 
+                 report_date: date, cpr: float,
+                 cdr: float, 
+                 recovery_rate: float, 
+                 cpr_lockout_months: int,
+                 cdr_lockout_months: int,
+                 forward_rate_curves: dict[str, ForwardRateCurve] = None):
         self.collateral_data = collateral_data
         self.report_date = report_date
         self.cpr = cpr
         self.cdr = cdr
         self.recovery_rate = recovery_rate
         self.forward_rate_curves = forward_rate_curves
+        self.cpr_lockout_end_date = self.report_date + relativedelta(months=cpr_lockout_months)
+        self.cdr_lockout_end_date = self.report_date + relativedelta(months=cdr_lockout_months)
 
     def build(self, forward_rate_curves: dict[str, ForwardRateCurve]) -> Portfolio:
         assets = self.collateral_data.apply(
@@ -311,6 +323,8 @@ class PortfolioFactory:
             cpr=self.cpr,
             cdr=self.cdr,
             recovery_rate=self.recovery_rate,
+            cpr_lockout_end_date=self.cpr_lockout_end_date,
+            cdr_lockout_end_date=self.cdr_lockout_end_date,
         )
 
         # FIXME don't use a hardcoded value for the rate curve

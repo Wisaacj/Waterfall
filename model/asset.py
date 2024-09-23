@@ -22,7 +22,9 @@ class Asset(InterestVehicle):
                  payment_frequency: int,
                  report_date: date, 
                  next_payment_date: date, 
-                 maturity_date: date, 
+                 maturity_date: date,
+                 cpr_lockout_end_date: date,
+                 cdr_lockout_end_date: date,
                  cpr: float, 
                  cdr: float, 
                  recovery_rate: float):
@@ -56,6 +58,8 @@ class Asset(InterestVehicle):
         self.next_payment_date = next_payment_date
         self.settlement_date = date(9999, 12, 31)
         """When the asset is sold and settled."""
+        self.cpr_lockout_end_date = cpr_lockout_end_date
+        self.cdr_lockout_end_date = cdr_lockout_end_date
 
         self.payment_frequency = payment_frequency
         self.payment_interval = relativedelta(months=(12/payment_frequency))
@@ -110,9 +114,13 @@ class Asset(InterestVehicle):
         # Accrue interest for this period.
         self.accrue_interest(year_factor)
 
+        # Calculate effective CPR and CDR for the period.
+        effective_cpr = self.effective_cpr(accrue_until)
+        effective_cdr = self.effective_cdr(accrue_until)
+
         # The amount of prepayments and defaults during this simulation period.
-        prepayments = (1 - ((1-self.cpr) ** year_factor)) * self.balance
-        defaults = (1 - ((1-self.cdr) ** year_factor)) * \
+        prepayments = (1 - ((1-effective_cpr) ** year_factor)) * self.balance
+        defaults = (1 - ((1-effective_cdr) ** year_factor)) * \
             (self.balance - prepayments)
 
         # The amount of prepayments and defaults as a proportion of the balance.
@@ -203,6 +211,30 @@ class Asset(InterestVehicle):
         self.recovered_principal = 0
         self.period_accrual = 0
 
+    def effective_cpr(self, as_of: date) -> float:
+        """
+        Calculates the effective CPR based on the lockout period.
+        
+        :param as_of: The current date of the simulation.
+        :return: The effective CPR.
+        """
+        if as_of > self.cpr_lockout_end_date:
+            return self.cpr
+        else:
+            return 0
+        
+    def effective_cdr(self, as_of: date) -> float:
+        """
+        Calculates the effective CDR based on the lockout period.
+        
+        :param as_of: The current date of the simulation.
+        :return: The effective CDR.
+        """
+        if as_of > self.cdr_lockout_end_date:
+            return self.cdr
+        else:
+            return 0
+
     def liquidate(self, accrual_date: date):
         raise NotImplementedError()
     
@@ -271,14 +303,14 @@ class Asset(InterestVehicle):
             self.report_date, self.calc_prior_payment_date(self.report_date))
         return self.balance * year_factor * self.interest_rate
 
-    def take_snapshot(self, simulate_until: date) -> None:
+    def take_snapshot(self, as_of: date) -> None:
         """
         Takes a snapshot of the asset's attributes.
 
-        :param simulate_until: the date marking the end of of this simulation period.
+        :param as_of: the date marking the end of of this simulation period.
         """
         self.history.append(AssetSnapshot(
-            date=simulate_until,
+            date=as_of,
             balance=self.balance,
             defaulted_principal=self.defaulted_principal,
             scheduled_principal=self.scheduled_principal,
@@ -307,12 +339,15 @@ class Loan(Asset):
                  report_date: date, 
                  next_payment_date: date, 
                  maturity_date: date, 
+                 cpr_lockout_end_date: date,
+                 cdr_lockout_end_date: date,
                  cpr: float, 
                  cdr: float, 
                  recovery_rate: float,
                  forward_rate_curve: ForwardRateCurve):
         super().__init__(figi, balance, price, spread, initial_coupon, payment_frequency,
-                         report_date, next_payment_date, maturity_date, cpr, cdr, recovery_rate)
+                         report_date, next_payment_date, maturity_date, cpr_lockout_end_date,
+                         cdr_lockout_end_date, cpr, cdr, recovery_rate)
         self.forward_rate_curve = forward_rate_curve
 
     def liquidate(self, accrual_date: date):

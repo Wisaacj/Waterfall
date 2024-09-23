@@ -16,7 +16,9 @@ def main():
 
     # Add arguments for each assumption
     parser.add_argument("--cpr", type=float, default=0.0, help="Constant Prepayment Rate (default: 0.0)")
+    parser.add_argument("--cpr_lockout_months", type=int, default=0, help="Number of months to lock out CPR (default: 0)")
     parser.add_argument("--cdr", type=float, default=0.0, help="Constant Default Rate (default: 0.0)")
+    parser.add_argument("--cdr_lockout_months", type=int, default=0, help="Number of months to lock out CDR (default: 0)")
     parser.add_argument("--recovery_rate", type=float, default=1.0, help="Recovery rate (default: 1.0)")    
     parser.add_argument("--payment_frequency", type=int, default=4, help="Payment frequency (default: 4)")
     parser.add_argument("--simulation_frequency", type=int, default=12, help="Simulation frequency (default: 12)")
@@ -33,13 +35,14 @@ def main():
     deal, loans, tranches = data_source.load_deal_data(deal_id)
     print(f"    > Loaded deal data")
 
-    print(f"\nLoading forward rate curves from US Oracle DB...")
+    print(f"Loading the latest forward-rate curves from DB (US Oracle)...")
     forward_curves = data_source.load_latest_forward_curves()
     print(f"    > Loaded rate curves")
 
-    print(f"Building model of {deal_id}...")
+    print(f"Building a model of {deal_id}...")
     factory = CLOFactory(
-        deal, tranches, loans, args.cpr, args.cdr, args.recovery_rate,
+        deal, tranches, loans, forward_curves, args.cpr, args.cdr, 
+        args.cpr_lockout_months, args.cdr_lockout_months, args.recovery_rate,
         args.payment_frequency, args.simulation_frequency, args.reinvestment_asset_maturity_months
     )
     model = factory.build()
@@ -56,19 +59,19 @@ def main():
 
 def debug():
     deal_id = "SCULE7"
-    accrual_date = date.today() + relativedelta(days=14)
+    accrual_date = date(2024, 9, 16) + relativedelta(days=14) # date.today() + relativedelta(days=14)
     liquidation_date = date(2024, 10, 15)
 
     print(f"\nLoading deal, tranche, & loan data for {deal_id} from disk...")
     deal, loans, tranches = data_source.load_deal_data(deal_id)
     print(f"    > Loaded deal data")
 
-    print(f"\nLoading the latest forward-rate curves from your DB (US Oracle)...")
+    print(f"Loading the latest forward-rate curves from DB (US Oracle)...")
     forward_curves = data_source.load_latest_forward_curves()
     print(f"    > Loaded rate curves")
 
     print(f"Building a model of {deal_id}...")
-    factory = CLOFactory(deal, tranches, loans, forward_curves, 0, 0, 1, 4, 12, 72)
+    factory = CLOFactory(deal, tranches, loans, forward_curves, 0, 0, 0, 0, 1, 4, 12, 72)
     model = factory.build()
     print("    > Model built")
 
