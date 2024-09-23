@@ -40,7 +40,7 @@ class CLOFactory:
             simulation_frequency: int,
             reinvestment_maturity_months: int,
     ):
-        self.report_date = date.today() # Ask about this...
+        self.report_date = date(2024, 9, 16) # date.today() # Ask about this...
 
         # Factories
         self.tranche_factory = TrancheFactory(tranche_data, self.report_date)
@@ -68,9 +68,9 @@ class CLOFactory:
 
     def build(self):
         forward_rate_curves = self.forward_curve_factory.build()
-        portfolio = self.portfolio_factory.build()
+        portfolio = self.portfolio_factory.build(forward_rate_curves)
         principal_account, interest_account = self.account_factory.build()
-        debt_tranches, equity_tranche = self.tranche_factory.build()
+        debt_tranches, equity_tranche = self.tranche_factory.build(forward_rate_curves['EURIBOR_3MO'])
         expenses_fee, senior_fee, junior_fee, incentive_fee = self.fee_factory.build()
 
         waterfall_factory = WaterfallFactory(expenses_fee, senior_fee, junior_fee, 
@@ -156,7 +156,7 @@ class ForwardRateCurveFactory:
 
         for curve_name in curve_names:
             # Create a ForwardRateCurve for the current curve
-            rates = self.data[curve_name].tolist()
+            rates = (self.data[curve_name] / 100).tolist()
             forward_curves[curve_name] = ForwardRateCurve(dates, rates)
 
         return forward_curves
@@ -199,6 +199,7 @@ class TrancheFactory:
             rating = item['comp_rating']
             balance = item['cur_balance']
             coupon = item['coupon'] / 100
+            margin = item['margin'] / 100
             is_fixed_rate = 'fix' in item['tranche_type']
             
             if is_fixed_rate:
@@ -209,7 +210,7 @@ class TrancheFactory:
             if rating == 'Equity' or rating == 'EQTY':
                 equity_tranche = EquityTranche(balance, self.report_date)
             else:
-                tranche = Tranche(rating, balance, coupon, self.report_date,
+                tranche = Tranche(rating, balance, margin, coupon, self.report_date,
                                    is_fixed_rate, euribor_3mo, day_count)
                 debt_tranches.append(tranche)
 
@@ -272,8 +273,9 @@ class PortfolioFactory:
         self.recovery_rate = recovery_rate
         self.forward_rate_curves = forward_rate_curves
 
-    def build(self) -> Portfolio:
-        assets = self.collateral_data.apply(self.build_asset, axis=1).tolist()
+    def build(self, forward_rate_curves: dict[str, ForwardRateCurve]) -> Portfolio:
+        assets = self.collateral_data.apply(
+            self.build_asset, axis=1, args=[forward_rate_curves]).tolist()
         return Portfolio(assets)
 
     def build_asset(self, asset_data: pd.Series, forward_rate_curves: dict[str, ForwardRateCurve]) -> Asset:
@@ -290,14 +292,17 @@ class PortfolioFactory:
 
         if asset_data.get('defaulted'):
             coupon = 0.0 # Defaulted assets don't earn interest.
+            spread = 0.0
         else:
             coupon = asset_data.get('grosscoupon') / 100
+            spread = asset_data.get('spread') / 100
 
         asset_params = dict(
             figi=figi,
             balance=float(asset_data.get('facevalue')),
             price=asset_data.get('mark_value') / 100,
-            coupon=coupon,
+            spread=spread,
+            initial_coupon=coupon,
             payment_frequency=int(asset_data.get('pay_freq')),
             report_date=self.report_date,
             next_payment_date=parser.parse(

@@ -1,10 +1,11 @@
 from datetime import date
-from dateutil.relativedelta import relativedelta
+from pyxirr import DayCount
 
 from .account import Account
 from .interest_vehicle import InterestVehicle
 from .snapshots import *
 from .enums import *
+from .forward_rate_curve import ForwardRateCurve
 
 
 class Tranche(InterestVehicle):
@@ -15,28 +16,35 @@ class Tranche(InterestVehicle):
         self,
         rating: str,
         balance: float,
-        coupon: float,
+        margin: float,
+        initial_coupon: float,
         report_date: date,
+        is_fixed_rate: bool = False,
+        forward_rate_curve: ForwardRateCurve = None,
+        day_count: DayCount = DayCount.ACT_360,
     ):
         """
         Instantiates a Tranche.
         
         :param rating: the seniority of the tranche.
         :param balance: the tranche's principal balance.
-        :param coupon: the coupon paid on the tranche.
+        :param margin: the margin above an index rate paid on the tranche.
         :param report_date: the date the structured deal report was generated on.
         """
-        super().__init__(balance, coupon)
+        super().__init__(balance, initial_coupon, report_date, day_count)
         
         self.rating = rating
         self.initial_balance = balance
+        self.is_fixed_rate = is_fixed_rate
+        self.forward_rate_curve = forward_rate_curve
+        self.margin = margin
         
         self.deferred_interest = 0
-        self.last_simulation_date = report_date
         self.clo_call_date = date(9999, 12, 31)
         
         # NOTE: This is incorrect. We need to backdate accrued interest on the tranche 
-        # like we do the in assets & then take a snapshot.
+        # like we do the in assets & then take a snapshot. This takes a snapshot *before*
+        # we backdate the accrued interest.
         # Take a snapshot of the initial values of the tranche's attributes.
         self.take_snapshot(report_date)
         
@@ -65,7 +73,7 @@ class Tranche(InterestVehicle):
         """
         Returns whether the tranche is an equity tranche or not.
         """
-        return self.get_waterfall_item() == WaterfallItem.Equity
+        return self.rating == 'Equity'
     
     def simulate(self, simulate_until: date):
         """
@@ -87,6 +95,25 @@ class Tranche(InterestVehicle):
         Notifies the tranche that the CLO will be liquidated shortly.
         """
         self.clo_call_date = liquidation_date
+
+    def update_coupon(self, fixing_date: date):
+        """
+        Updates the coupon rate for floating rate tranches.
+
+        This method updates the coupon rate of the tranche if it's a floating rate tranche.
+        For fixed rate tranches, this method does nothing.
+
+        :param fixing_date: The date used to determine the new base rate.
+
+        Note:
+        - For floating rate tranches, the new coupon is calculated as the sum of:
+          1. The forward rate obtained from the forward_rate_curve for the given fixing_date
+          2. The tranche's margin
+        - For fixed rate tranches, the coupon remains unchanged
+        """
+        if not self.is_fixed_rate:
+            base_rate = self.forward_rate_curve.get_rate(fixing_date)
+            self.interest_rate = base_rate + self.margin
     
     def accrue_interest(self, year_factor: float):
         """
@@ -146,29 +173,6 @@ class Tranche(InterestVehicle):
         
         # This performs snapshot.attribute_source = pct_principal.
         setattr(self.last_snapshot, attribute_source.value, pct_principal)
-
-    def get_waterfall_item(self, _wi = WaterfallItem):
-        """
-        Returns the waterfall item that the tranche rating maps onto.
-        
-        :param _wi: this is in the method signature to save instantiating _wi every time the method is called.
-        :return: the waterfall item that maps onto this tranche.
-        """
-        tranche_rating_map = {
-            'AAA': _wi.AAA,
-            'AA': _wi.AA,
-            'A': _wi.A,
-            'BBB': _wi.BBB,
-            'BB': _wi.BB,
-            'B': _wi.B,
-            'EQTY': _wi.Equity,
-            'Equity': _wi.Equity
-        }
-        
-        if self.rating not in tranche_rating_map:
-            raise Exception(f"Enum exception: Tranche '{self.rating}' doesn't map onto an enum WaterfallItems.")
-        
-        return tranche_rating_map[self.rating]
             
     def take_snapshot(self, as_of_date: date):
         """
@@ -179,7 +183,7 @@ class Tranche(InterestVehicle):
         """
         snapshot = TrancheSnapshot(
             date = as_of_date,
-            coupon = self.coupon,
+            coupon = self.interest_rate,
             balance = self.balance,
             interest_accrued = self.interest_accrued,
             deferred_interest = self.deferred_interest,

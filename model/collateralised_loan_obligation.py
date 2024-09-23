@@ -193,6 +193,10 @@ class CLO:
                 # Run the payments down the cashflow waterfalls.
                 self.interest_waterfall.pay(self.interest_account, PaymentSource.Interest)
                 self.principal_waterfall.pay(self.principal_account, PaymentSource.Amortization)
+
+                # Fix coupons for the next accrual period.
+                for tranche in self.debt_tranches:
+                    tranche.update_coupon(self.simulate_until)
                 
                 # Bump the next payment date forward.
                 self.next_payment_date += self.payment_interval

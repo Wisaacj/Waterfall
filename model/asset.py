@@ -13,24 +13,36 @@ class Asset(InterestVehicle):
     Class representing an Asset.
     """
 
-    def __init__(self, figi: str, balance: float, price: float, coupon: float, payment_frequency: int,
-                 report_date: date, next_payment_date: date, maturity_date: date, cpr: float, cdr: float, recovery_rate: float):
+    def __init__(self, 
+                 figi: str, 
+                 balance: float, 
+                 price: float, 
+                 spread: float, 
+                 initial_coupon: float,
+                 payment_frequency: int,
+                 report_date: date, 
+                 next_payment_date: date, 
+                 maturity_date: date, 
+                 cpr: float, 
+                 cdr: float, 
+                 recovery_rate: float):
         """
         Instantiates an asset.
 
         :param figi: the asset's BBG ID or reinvestment name.
         :param balance: the balance of the asset as of the report_date.
         :param price: the price of the asset as of the report_date.
-        :param coupon: the coupon paid on the asset as of the report_date 
+        :param spread: the spread paid on the asset over the base rate
         :param payment_frequency: the number of times the asset pays per year.
         :param report_date: the date the deal report was generated on.
         :param next_payment_date: the next date the asset will pay.
         :param maturity_date: the date the asset matures
         """
         # Initialise the last simulation date to report date.
-        super().__init__(balance, coupon, report_date)
+        super().__init__(balance, initial_coupon, report_date)
 
         self.figi = figi
+        self.spread = spread
 
         # Price, assumptions.
         self.price = price
@@ -135,6 +147,9 @@ class Asset(InterestVehicle):
             self.interest_paid += self.interest_accrued
             self.interest_accrued = 0
 
+            # Fix coupon for the next accrual period.
+            self.update_coupon(simulate_until)
+
             # Bump the next payment date forward by the payment interval.
             self.next_payment_date += self.payment_interval
 
@@ -189,6 +204,23 @@ class Asset(InterestVehicle):
         self.period_accrual = 0
 
     def liquidate(self, accrual_date: date):
+        raise NotImplementedError()
+    
+    def update_coupon(self, fixing_date: date):
+        """
+        Updates the coupon rate for floating rate assets.
+
+        This method updates the coupon rate of the asset if it's a floating rate asset.
+        For fixed rate assets, this method does nothing.
+
+        :param fixing_date: The date used to determine the new base rate.
+
+        Note:
+        - For floating rate asset, the new coupon is calculated as the sum of:
+          1. The forward rate obtained from the forward_rate_curve for the given fixing_date
+          2. The asset's spread
+        - For fixed rate assets, the coupon remains unchanged
+        """
         raise NotImplementedError()
 
     def sweep_interest(self, destination: Account) -> float:
@@ -256,7 +288,7 @@ class Asset(InterestVehicle):
             interest_accrued=self.interest_accrued,
             period_accrual=self.period_accrual,
             recovered_principal=self.recovered_principal,
-            interest_rate=self.coupon,
+            interest_rate=self.interest_rate,
         ))
 
 
@@ -265,18 +297,33 @@ class Loan(Asset):
     Class representing a floating-rate asset.
     """
 
-    def __init__(self, figi: str, balance: float, price: float, coupon: float, payment_frequency: int,
-                 report_date: date, next_payment_date: date, maturity_date: date, cpr: float,
-                 cdr: float, recovery_rate: float, forward_rate_curve: ForwardRateCurve = None):
-        super().__init__(figi, balance, price, coupon, payment_frequency,
+    def __init__(self, 
+                 figi: str, 
+                 balance: float, 
+                 price: float, 
+                 spread: float, 
+                 initial_coupon: float,
+                 payment_frequency: int,
+                 report_date: date, 
+                 next_payment_date: date, 
+                 maturity_date: date, 
+                 cpr: float, 
+                 cdr: float, 
+                 recovery_rate: float,
+                 forward_rate_curve: ForwardRateCurve):
+        super().__init__(figi, balance, price, spread, initial_coupon, payment_frequency,
                          report_date, next_payment_date, maturity_date, cpr, cdr, recovery_rate)
         self.forward_rate_curve = forward_rate_curve
 
     def liquidate(self, accrual_date: date):
         # Loans trade with delayed comp (T+10). That is, they continue to earn interest
-        # until T+10 bonds.
+        # until T+10.
         self.settlement_date = day_counter.add_uk_business_days(
             accrual_date, 10)
+        
+    def update_coupon(self, fixing_date: date):
+        base_rate = self.forward_rate_curve.get_rate(fixing_date)
+        self.interest_rate = base_rate + self.spread
 
 
 class Bond(Asset):
@@ -289,3 +336,6 @@ class Bond(Asset):
         # until T+2.
         self.settlement_date = day_counter.add_uk_business_days(
             accrual_date, 2)
+        
+    def update_coupon(self, fixing_date: date):
+        pass

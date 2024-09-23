@@ -1,14 +1,16 @@
+import pyxirr
 from datetime import date
 
-from . import day_counter
 from .snapshots import Snapshot
+from pyxirr import DayCount
 
 
 class InterestVehicle:
     """
     Class representing a simple financial vehicle which accrues interest.
     """
-    def __init__(self, balance: float, interest_rate: float, last_simulation_date: date = None):
+    def __init__(self, balance: float, interest_rate: float, 
+                 last_simulation_date: date = None, day_count: DayCount = DayCount.ACT_360):
         """
         Instantiates an InterestVehicle.
         
@@ -19,6 +21,7 @@ class InterestVehicle:
         self.balance = balance
         self.interest_rate = interest_rate
         self.last_simulation_date = last_simulation_date
+        self.day_count = day_count
         
         # Earnings can be collected (swept) by other objects.
         self.interest_paid = 0 
@@ -27,13 +30,6 @@ class InterestVehicle:
         self.period_accrual = 0
         
         self.history: list[Snapshot] = []
-        
-    @property
-    def coupon(self):
-        """
-        An alias of interest rate.
-        """
-        return self.interest_rate
     
     @property
     def last_snapshot(self) -> Snapshot:
@@ -52,10 +48,10 @@ class InterestVehicle:
         :return: the year factor.
         """
         if from_date is not None:
-            return (to_date - from_date).days / day_counter.DCF_DENOMINATOR
+            return pyxirr.year_fraction(from_date, to_date, self.day_count)
         
-        # If a from_date is not provided, default it to the last_simulation_date. 
-        return (to_date - self.last_simulation_date).days / day_counter.DCF_DENOMINATOR
+        # If a from_date is not provided, default it to the last_simulation_date.
+        return pyxirr.year_fraction(self.last_simulation_date, to_date, self.day_count)
     
     def accrue_interest(self, year_factor: float) -> None:
         """
