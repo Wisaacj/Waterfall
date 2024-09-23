@@ -2,3 +2,6 @@ pandas
 python-dateutil
 govuk-bank-holidays
 pyxirr
+python-decouple
+sqlalchemy
+pyodbc

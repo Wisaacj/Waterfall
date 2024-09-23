@@ -28,7 +28,7 @@ class ForwardRateCurve:
         self.interpolator = interpolate.interp1d(
             [d.toordinal() for d in dates],
             rates,
-            kind='cubic',  # Use cubic splines to interpolate between points.
+            kind='linear',  # Use cubic splines to interpolate between points.
             # Do not raise an error if the interpolation is out of bounds.
             bounds_error=False,
             # Use the first or last known rate if the interpolation is out of bounds.

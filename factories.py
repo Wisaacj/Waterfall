@@ -1,5 +1,6 @@
 import pandas as pd
 
+from pyxirr import DayCount
 from datetime import date
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
@@ -31,6 +32,7 @@ class CLOFactory:
             deal_data: pd.DataFrame,
             tranche_data: pd.DataFrame,
             collateral_data: pd.DataFrame,
+            forward_curve_data: pd.DataFrame,
             cpr: float,
             cdr: float,
             recovery_rate: float,
@@ -45,6 +47,7 @@ class CLOFactory:
         self.portfolio_factory = PortfolioFactory(collateral_data, self.report_date, cpr, cdr, recovery_rate)
         self.fee_factory = FeeFactory(deal_data, self.report_date)
         self.account_factory = AccountFactory(deal_data)
+        self.forward_curve_factory = ForwardRateCurveFactory(forward_curve_data)
 
         # Assumptions
         self.cpr = cpr
@@ -64,6 +67,7 @@ class CLOFactory:
             deal_data['non_call_date'], dayfirst=True).date()
 
     def build(self):
+        forward_rate_curves = self.forward_curve_factory.build()
         portfolio = self.portfolio_factory.build()
         principal_account, interest_account = self.account_factory.build()
         debt_tranches, equity_tranche = self.tranche_factory.build()
@@ -136,6 +140,28 @@ class WaterfallFactory:
         return CashflowWaterfall(payment_map, payment_map.keys())
     
 
+class ForwardRateCurveFactory:
+    """
+    Model factory for building forward-rate curves.
+    """
+
+    def __init__(self, forward_curve_data: pd.DataFrame):
+        self.data = forward_curve_data
+
+    def build(self) -> dict[str, ForwardRateCurve]:
+        forward_curves = {}
+
+        curve_names = [col for col in self.data.columns if col != 'reporting_date']
+        dates = pd.to_datetime(self.data['reporting_date']).dt.date.tolist()
+
+        for curve_name in curve_names:
+            # Create a ForwardRateCurve for the current curve
+            rates = self.data[curve_name].tolist()
+            forward_curves[curve_name] = ForwardRateCurve(dates, rates)
+
+        return forward_curves
+    
+
 class AccountFactory:
     """
     Model factory for building cash accounts.
@@ -165,7 +191,7 @@ class TrancheFactory:
         self.tranche_data = tranche_data
         self.report_date = report_date
 
-    def build(self):
+    def build(self, euribor_3mo: ForwardRateCurve):
         debt_tranches = []
         equity_tranche = None
 
@@ -173,13 +199,19 @@ class TrancheFactory:
             rating = item['comp_rating']
             balance = item['cur_balance']
             coupon = item['coupon'] / 100
+            is_fixed_rate = 'fix' in item['tranche_type']
+            
+            if is_fixed_rate:
+                day_count = DayCount.THIRTY_360_ISDA
+            else:
+                day_count = DayCount.ACT_360
 
             if rating == 'Equity' or rating == 'EQTY':
                 equity_tranche = EquityTranche(balance, self.report_date)
-                continue
-
-            tranche = Tranche(rating, balance, coupon, self.report_date)
-            debt_tranches.append(tranche)
+            else:
+                tranche = Tranche(rating, balance, coupon, self.report_date,
+                                   is_fixed_rate, euribor_3mo, day_count)
+                debt_tranches.append(tranche)
 
         sort_order = ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'Equity']
         sorted_tranches = sorted(
@@ -244,15 +276,15 @@ class PortfolioFactory:
         assets = self.collateral_data.apply(self.build_asset, axis=1).tolist()
         return Portfolio(assets)
 
-    def build_asset(self, asset_data: pd.Series) -> Asset:
+    def build_asset(self, asset_data: pd.Series, forward_rate_curves: dict[str, ForwardRateCurve]) -> Asset:
         maturity_date = parser.parse(
             asset_data['maturitydate'], dayfirst=True).date()
+        figi = asset_data.get('bbg_id')
 
         # Don't add matured assets to the portfolio
         if maturity_date <= self.report_date:
-            raise Exception()
+            raise ValueError(f"asset has already matured: {figi} matures on {maturity_date} but reporting date is {self.report_date}")
 
-        figi = asset_data.get('bbg_id')
         if not pd.notna(figi):
             figi = asset_data.get('loanxid')
 
@@ -263,7 +295,7 @@ class PortfolioFactory:
 
         asset_params = dict(
             figi=figi,
-            balance=int(asset_data.get('facevalue')),
+            balance=float(asset_data.get('facevalue')),
             price=asset_data.get('mark_value') / 100,
             coupon=coupon,
             payment_frequency=int(asset_data.get('pay_freq')),
@@ -276,8 +308,10 @@ class PortfolioFactory:
             recovery_rate=self.recovery_rate,
         )
 
+        # FIXME don't use a hardcoded value for the rate curve
+        forward_rate_curve = forward_rate_curves['EURIBOR_3MO']
         asset_kind = asset_data.get('type').lower()
         if asset_kind == 'loan':
-            asset_params |= dict(forward_rate_curve=None)
+            asset_params |= dict(forward_rate_curve=forward_rate_curve)
 
         return (Loan if asset_kind == 'loan' else Bond)(**asset_params)

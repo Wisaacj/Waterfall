@@ -30,8 +30,12 @@ def main():
     liquidation_date = args.liquidation_date
 
     print(f"\nLoading deal, tranche, & loan data for {deal_id} from disk...")
-    deal, loans, tranches = data_source.load_data(deal_id)
-    print(f"    > Loaded data")
+    deal, loans, tranches = data_source.load_deal_data(deal_id)
+    print(f"    > Loaded deal data")
+
+    print(f"\nLoading forward rate curves from US Oracle DB...")
+    forward_curves = data_source.load_latest_forward_curves()
+    print(f"    > Loaded rate curves")
 
     print(f"Building model of {deal_id}...")
     factory = CLOFactory(
@@ -56,11 +60,15 @@ def debug():
     liquidation_date = date(2024, 10, 15)
 
     print(f"\nLoading deal, tranche, & loan data for {deal_id} from disk...")
-    deal, loans, tranches = data_source.load_data(deal_id)
-    print(f"    > Loaded data")
+    deal, loans, tranches = data_source.load_deal_data(deal_id)
+    print(f"    > Loaded deal data")
 
-    print(f"Building model of {deal_id}...")
-    factory = CLOFactory(deal, tranches, loans, 0, 0, 1, 4, 12, 72)
+    print(f"\nLoading the latest forward-rate curves from your DB (US Oracle)...")
+    forward_curves = data_source.load_latest_forward_curves()
+    print(f"    > Loaded rate curves")
+
+    print(f"Building a model of {deal_id}...")
+    factory = CLOFactory(deal, tranches, loans, forward_curves, 0, 0, 1, 4, 12, 72)
     model = factory.build()
     print("    > Model built")
 
