@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--simulation_frequency", type=int, default=12, help="Simulation frequency (default: 12)")
     parser.add_argument("--reinvestment_asset_maturity_months", type=int, default=72, help="Reinvestment asset maturity in months (default: 72)")
     parser.add_argument("--output_path", type=Path, default=Path("outputs"), help="Path to save the output files (default: ./outputs)")
-    parser.add_argument("--output_asset_cashflows", type=bool, default=False, help="Output asset cashflows to CSV (default: False)")
+    parser.add_argument("--output_asset_cashflows", type=bool, default=True, help="Output asset cashflows to CSV (default: True)")
     
     args = parser.parse_args()
     deal_id = args.deal_id.upper()
