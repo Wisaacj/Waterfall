@@ -38,7 +38,8 @@ class AssetSnapshot(Snapshot):
     interest_paid: float
     period_accrual: float
     interest_accrued: float
-    interest_rate: float
+    coupon: float
+    base_rate: float
     
     
 @dataclass
@@ -55,6 +56,7 @@ class TrancheSnapshot(Snapshot):
     pct_principal: float = 0
     pct_amortization: float = 0
     coupon: float = 0
+    base_rate: float = 0
     
     
 @dataclass

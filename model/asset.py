@@ -49,6 +49,7 @@ class Asset(InterestVehicle):
 
         self.figi = figi
         self.spread = spread
+        self.base_rate = initial_coupon - spread
         self.asset_kind = asset_kind
         self.forward_rate_curve = forward_rate_curve
         self.is_floating_rate = is_floating_rate
@@ -163,7 +164,7 @@ class Asset(InterestVehicle):
             self.interest_accrued = 0
 
             # Fix coupon for the next accrual period.
-            self.update_coupon(simulate_until)
+            self.update_coupon(simulate_until + relativedelta(months=1))
 
             # Bump the next payment date forward by the payment interval.
             self.next_payment_date += self.payment_interval
@@ -278,8 +279,8 @@ class Asset(InterestVehicle):
         - For fixed rate assets, the coupon remains unchanged
         """
         if self.is_floating_rate:
-            base_rate = self.forward_rate_curve.get_rate(fixing_date)
-            self.interest_rate = base_rate + self.spread
+            self.base_rate = self.forward_rate_curve.get_rate(fixing_date)
+            self.interest_rate = self.base_rate + self.spread
 
     def sweep_interest(self, destination: Account) -> float:
         """
@@ -346,5 +347,6 @@ class Asset(InterestVehicle):
             interest_accrued=self.interest_accrued,
             period_accrual=self.period_accrual,
             recovered_principal=self.recovered_principal,
-            interest_rate=self.interest_rate,
+            coupon=self.interest_rate,
+            base_rate=self.base_rate,
         ))

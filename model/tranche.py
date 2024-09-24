@@ -38,6 +38,7 @@ class Tranche(InterestVehicle):
         self.is_fixed_rate = is_fixed_rate
         self.forward_rate_curve = forward_rate_curve
         self.margin = margin
+        self.base_rate = initial_coupon - margin
         
         self.deferred_interest = 0
         self.clo_call_date = date(9999, 12, 31)
@@ -112,8 +113,8 @@ class Tranche(InterestVehicle):
         - For fixed rate tranches, the coupon remains unchanged
         """
         if not self.is_fixed_rate:
-            base_rate = self.forward_rate_curve.get_rate(fixing_date)
-            self.interest_rate = base_rate + self.margin
+            self.base_rate = self.forward_rate_curve.get_rate(fixing_date)
+            self.interest_rate = self.base_rate + self.margin
     
     def accrue_interest(self, year_factor: float):
         """
@@ -184,6 +185,7 @@ class Tranche(InterestVehicle):
         snapshot = TrancheSnapshot(
             date = as_of_date,
             coupon = self.interest_rate,
+            base_rate = self.base_rate,
             balance = self.balance,
             interest_accrued = self.interest_accrued,
             deferred_interest = self.deferred_interest,

@@ -196,7 +196,7 @@ class CLO:
 
                 # Fix coupons for the next accrual period.
                 for tranche in self.debt_tranches:
-                    tranche.update_coupon(self.simulate_until)
+                    tranche.update_coupon(self.simulate_until + relativedelta(months=1))
                 
                 # Bump the next payment date forward.
                 self.next_payment_date += self.payment_interval
