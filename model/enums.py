@@ -24,3 +24,28 @@ class PaymentSource(Enum):
     """
     Interest = ""
     Amortization = "pct_amortization"
+
+
+class AssetKind(Enum):
+    """
+    Enumerates the possible kinds of assets.
+    """
+    Loan = "loan"
+    Bond = "bond"
+
+    @classmethod
+    def from_string(cls, value: str) -> "AssetKind":
+        if value.lower() == "loan":
+            return cls.Loan
+        elif value.lower() == "bond":
+            return cls.Bond
+        else:
+            raise ValueError(f"Invalid asset kind: {value}")
+
+
+class AssetType(Enum):
+    """
+    Enumerates the possible types of assets.
+    """
+    FloatingRate = "floating"
+    FixedRate = "fixed"

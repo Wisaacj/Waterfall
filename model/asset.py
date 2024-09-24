@@ -6,6 +6,7 @@ from .account import Account
 from .interest_vehicle import InterestVehicle
 from .snapshots import AssetSnapshot
 from .forward_rate_curve import ForwardRateCurve
+from .enums import AssetKind
 
 
 class Asset(InterestVehicle):
@@ -15,6 +16,7 @@ class Asset(InterestVehicle):
 
     def __init__(self, 
                  figi: str, 
+                 asset_kind: AssetKind,
                  balance: float, 
                  price: float, 
                  spread: float, 
@@ -27,7 +29,9 @@ class Asset(InterestVehicle):
                  cdr_lockout_end_date: date,
                  cpr: float, 
                  cdr: float, 
-                 recovery_rate: float):
+                 recovery_rate: float,
+                 forward_rate_curve: ForwardRateCurve,
+                 is_floating_rate: bool):
         """
         Instantiates an asset.
 
@@ -45,6 +49,9 @@ class Asset(InterestVehicle):
 
         self.figi = figi
         self.spread = spread
+        self.asset_kind = asset_kind
+        self.forward_rate_curve = forward_rate_curve
+        self.is_floating_rate = is_floating_rate
 
         # Price, assumptions.
         self.price = price
@@ -145,7 +152,7 @@ class Asset(InterestVehicle):
         # 3) For remaining balances:
         self.balance -= prepayments + defaults
 
-        on_payment_date = simulate_until == self.next_payment_date
+        on_payment_date = simulate_until == self.next_payment_date # TODO: simulate_until >= self.next_payment_date + 8 business days
         asset_matured = simulate_until >= self.maturity
         asset_settled = simulate_until >= self.settlement_date
 
@@ -236,7 +243,24 @@ class Asset(InterestVehicle):
             return 0
 
     def liquidate(self, accrual_date: date):
-        raise NotImplementedError()
+        """
+        Liquidates the asset by trading it in the market on the accrual date. The 
+        settlement date then depends on the asset kind.
+
+        :param accrual_date: The date of the accrual.
+        """
+        if self.asset_kind == AssetKind.Loan:
+            # Loans trade with delayed comp (T+10). That is, they continue to earn
+            # interest until T+10.
+            self.settlement_date = day_counter.add_uk_business_days(
+                accrual_date, 10)
+        elif self.asset_kind == AssetKind.Bond:
+            # Bonds trade with delayed comp (T+2). That is, they continue to earn 
+            # interest until T+2.
+            self.settlement_date = day_counter.add_uk_business_days(
+                accrual_date, 2)
+        else:
+            raise ValueError(f"invalid asset kind: {self.asset_kind}")
     
     def update_coupon(self, fixing_date: date):
         """
@@ -253,7 +277,9 @@ class Asset(InterestVehicle):
           2. The asset's spread
         - For fixed rate assets, the coupon remains unchanged
         """
-        raise NotImplementedError()
+        if self.is_floating_rate:
+            base_rate = self.forward_rate_curve.get_rate(fixing_date)
+            self.interest_rate = base_rate + self.spread
 
     def sweep_interest(self, destination: Account) -> float:
         """
@@ -322,55 +348,3 @@ class Asset(InterestVehicle):
             recovered_principal=self.recovered_principal,
             interest_rate=self.interest_rate,
         ))
-
-
-class Loan(Asset):
-    """
-    Class representing a floating-rate asset.
-    """
-
-    def __init__(self, 
-                 figi: str, 
-                 balance: float, 
-                 price: float, 
-                 spread: float, 
-                 initial_coupon: float,
-                 payment_frequency: int,
-                 report_date: date, 
-                 next_payment_date: date, 
-                 maturity_date: date, 
-                 cpr_lockout_end_date: date,
-                 cdr_lockout_end_date: date,
-                 cpr: float, 
-                 cdr: float, 
-                 recovery_rate: float,
-                 forward_rate_curve: ForwardRateCurve):
-        super().__init__(figi, balance, price, spread, initial_coupon, payment_frequency,
-                         report_date, next_payment_date, maturity_date, cpr_lockout_end_date,
-                         cdr_lockout_end_date, cpr, cdr, recovery_rate)
-        self.forward_rate_curve = forward_rate_curve
-
-    def liquidate(self, accrual_date: date):
-        # Loans trade with delayed comp (T+10). That is, they continue to earn interest
-        # until T+10.
-        self.settlement_date = day_counter.add_uk_business_days(
-            accrual_date, 10)
-        
-    def update_coupon(self, fixing_date: date):
-        base_rate = self.forward_rate_curve.get_rate(fixing_date)
-        self.interest_rate = base_rate + self.spread
-
-
-class Bond(Asset):
-    """
-    Class representing a fixed-rate asset.
-    """
-
-    def liquidate(self, accrual_date: date):
-        # Bonds trade with delayed comp (T+2). That is, they continue to earn interest
-        # until T+2.
-        self.settlement_date = day_counter.add_uk_business_days(
-            accrual_date, 2)
-        
-    def update_coupon(self, fixing_date: date):
-        pass

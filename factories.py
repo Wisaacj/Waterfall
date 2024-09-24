@@ -8,8 +8,6 @@ from dateutil.relativedelta import relativedelta
 from model import (
     Account,
     Asset,
-    Loan,
-    Bond,
     Tranche,
     EquityTranche,
     Fee,
@@ -18,7 +16,8 @@ from model import (
     WaterfallItem,
     CashflowWaterfall,
     Portfolio,
-    ForwardRateCurve
+    ForwardRateCurve,
+    AssetKind,
 )
 
 
@@ -42,7 +41,7 @@ class CLOFactory:
             simulation_frequency: int,
             reinvestment_maturity_months: int,
     ):
-        self.report_date = date.today() # Ask about this...
+        self.report_date = date(2024, 9, 16) # date.today() # Ask about this...
 
         # Factories
         self.tranche_factory = TrancheFactory(tranche_data, self.report_date)
@@ -291,9 +290,9 @@ class PortfolioFactory:
         return Portfolio(assets)
 
     def build_asset(self, asset_data: pd.Series, forward_rate_curves: dict[str, ForwardRateCurve]) -> Asset:
-        maturity_date = parser.parse(
-            asset_data['maturitydate'], dayfirst=True).date()
         figi = asset_data.get('bbg_id')
+        asset_kind = AssetKind.from_string(asset_data.get('type'))
+        maturity_date = parser.parse(asset_data['maturitydate'], dayfirst=True).date()
 
         # Don't add matured assets to the portfolio
         if maturity_date <= self.report_date:
@@ -309,8 +308,13 @@ class PortfolioFactory:
             coupon = asset_data.get('grosscoupon') / 100
             spread = asset_data.get('spread') / 100
 
+        # FIXME don't use a hardcoded value for the rate curve
+        forward_rate_curve = forward_rate_curves['EURIBOR_3MO']
+        is_floating_rate = asset_data.get('fix_or_float').lower() == 'float'
+
         asset_params = dict(
             figi=figi,
+            asset_kind=asset_kind,
             balance=float(asset_data.get('facevalue')),
             price=asset_data.get('mark_value') / 100,
             spread=spread,
@@ -320,17 +324,13 @@ class PortfolioFactory:
             next_payment_date=parser.parse(
                 asset_data['next_pay_date'], dayfirst=True).date(),
             maturity_date=maturity_date,
+            cpr_lockout_end_date=self.cpr_lockout_end_date,
+            cdr_lockout_end_date=self.cdr_lockout_end_date,
             cpr=self.cpr,
             cdr=self.cdr,
             recovery_rate=self.recovery_rate,
-            cpr_lockout_end_date=self.cpr_lockout_end_date,
-            cdr_lockout_end_date=self.cdr_lockout_end_date,
+            forward_rate_curve=forward_rate_curve,
+            is_floating_rate=is_floating_rate,
         )
 
-        # FIXME don't use a hardcoded value for the rate curve
-        forward_rate_curve = forward_rate_curves['EURIBOR_3MO']
-        asset_kind = asset_data.get('type').lower()
-        if asset_kind == 'loan':
-            asset_params |= dict(forward_rate_curve=forward_rate_curve)
-
-        return (Loan if asset_kind == 'loan' else Bond)(**asset_params)
+        return Asset(**asset_params)
