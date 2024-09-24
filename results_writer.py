@@ -1,7 +1,7 @@
-import os
 import numpy as np
 import pandas as pd
 
+from tqdm import tqdm
 from pathlib import Path
 from collections import Counter
 from model import CLO, Snapshot
@@ -25,23 +25,28 @@ class ResultsWriter:
     @property
     def output_path(self) -> Path:
         return self.output_dir / self.deal_id
+    
+    def write_asset_cashflows(self) -> str:
+        self._export_asset_histories()
+        return self.output_dir.absolute()
+
+    def write_tranche_cashflows(self) -> str:
+        for tranche in tqdm(self.model.tranches, desc="Exporting tranche histories"):
+            self._export_history_to_excel(tranche.history, tranche.rating)
+        return self.output_dir.absolute()
 
     def write_results(self) -> str:
-        # Write tranche histories
-        for tranche in self.model.tranches:
-            self._export_history_to_excel(tranche.history, tranche.rating)
-
-        # Write asset histories
-        self._export_asset_histories()
-
+        self.write_asset_cashflows()
+        self.write_tranche_cashflows()
         return self.output_dir.absolute()
 
     def _export_asset_histories(self):
         """Exports the history of all assets in the portfolio to a single Excel file."""
+
         all_asset_data = []
         figi_counter = Counter()
 
-        for asset in self.model.portfolio.assets:
+        for asset in tqdm(self.model.portfolio.assets, desc="Exporting asset histories"):
             figi_counter[asset.figi] += 1
             asset_data = [self._snapshot_to_dict(snapshot) for snapshot in asset.history]
             for row in asset_data:

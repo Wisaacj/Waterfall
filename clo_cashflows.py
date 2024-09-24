@@ -46,9 +46,12 @@ def main():
     model.simulate()
     print("    > Cashflows simulated")
 
-    print("Writing results to disk...")
-    path = ResultsWriter(model, args.deal_id, args.output_path).write_results()
-    print(f"    > Results written to '{path}'\n")
+    path = ResultsWriter(model, args.deal_id, args.output_path).write_tranche_cashflows()
+    print(f"    > Tranche cashflows written to '{path}'")
+
+    if args.output_asset_cashflows:
+        path = ResultsWriter(model, args.deal_id, args.output_path).write_asset_cashflows()
+        print(f"    > Asset cashflows written to '{path}'\n")
 
 
 if __name__ == "__main__":
