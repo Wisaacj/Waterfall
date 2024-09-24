@@ -66,6 +66,11 @@ class ResultsWriter:
             date_summary = self._create_summary(df.groupby('date'))
             date_summary.to_excel(writer, sheet_name='Portfolio Summary')
 
+            # Access the workbook and apply formatting
+            workbook = writer.book
+            self._apply_formatting(workbook['Asset Cashflows'])
+            self._apply_formatting(workbook['Portfolio Summary'])
+
     def _create_summary(self, grouped: pd.DataFrame):
         """Create a summary DataFrame with weighted average interest rate."""
         sum_cols = grouped.sum()
@@ -81,7 +86,10 @@ class ResultsWriter:
         cashflows_df = pd.DataFrame(data)
         
         self.output_path.mkdir(exist_ok=True)
-        cashflows_df.to_excel(self.output_path / f"{filename}.xlsx")
+        excel_path = self.output_path / f"{filename}.xlsx"
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            cashflows_df.to_excel(writer, sheet_name=filename)
+            self._apply_formatting(writer.sheets[filename])
 
     @staticmethod
     def _snapshot_to_dict(snapshot: Snapshot):
@@ -95,3 +103,24 @@ class ResultsWriter:
             return np.average(group['interest_rate'], weights=group['balance'])
         except ZeroDivisionError:
             return 0
+        
+    @staticmethod
+    def _apply_formatting(sheet):
+        """Apply formatting to the Excel sheet."""
+        for row in sheet.iter_rows():
+            for cell in row:
+                if isinstance(cell.value, (int, float)):
+                    cell.number_format = '#,##0'
+
+        # Adjust column widths
+        for col in sheet.columns:
+            column = col[0].column_letter
+            max_length = len(column)
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = (max_length)
+            sheet.column_dimensions[column].width = adjusted_width
