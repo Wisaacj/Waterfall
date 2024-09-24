@@ -41,7 +41,7 @@ class CLOFactory:
             simulation_frequency: int,
             reinvestment_maturity_months: int,
     ):
-        self.report_date = date(2024, 9, 16) # date.today() # Ask about this...
+        self.report_date = date.today() # Ask about this...
 
         # Factories
         self.tranche_factory = TrancheFactory(tranche_data, self.report_date)
@@ -293,6 +293,8 @@ class PortfolioFactory:
         figi = asset_data.get('bbg_id')
         asset_kind = AssetKind.from_string(asset_data.get('type'))
         maturity_date = parser.parse(asset_data['maturitydate'], dayfirst=True).date()
+        payment_frequency = int(asset_data.get('pay_freq'))
+        is_floating_rate = asset_data.get('fix_or_float').lower() == 'float'
 
         # Don't add matured assets to the portfolio
         if maturity_date <= self.report_date:
@@ -308,18 +310,24 @@ class PortfolioFactory:
             coupon = asset_data.get('grosscoupon') / 100
             spread = asset_data.get('spread') / 100
 
-        # FIXME don't use a hardcoded value for the rate curve
-        forward_rate_curve = forward_rate_curves['EURIBOR_3MO']
-        is_floating_rate = asset_data.get('fix_or_float').lower() == 'float'
+        match payment_frequency:
+            case 12:
+                forward_rate_curve = forward_rate_curves['EURIBOR_1MO']
+            case 4:
+                forward_rate_curve = forward_rate_curves['EURIBOR_3MO']
+            case 2:
+                forward_rate_curve = forward_rate_curves['EURIBOR_6MO']
+            case _: # Default to 3MO
+                forward_rate_curve = forward_rate_curves['EURIBOR_3MO']
 
-        asset_params = dict(
+        return Asset(
             figi=figi,
             asset_kind=asset_kind,
             balance=float(asset_data.get('facevalue')),
             price=asset_data.get('mark_value') / 100,
             spread=spread,
             initial_coupon=coupon,
-            payment_frequency=int(asset_data.get('pay_freq')),
+            payment_frequency=payment_frequency,
             report_date=self.report_date,
             next_payment_date=parser.parse(
                 asset_data['next_pay_date'], dayfirst=True).date(),
@@ -330,7 +338,5 @@ class PortfolioFactory:
             cdr=self.cdr,
             recovery_rate=self.recovery_rate,
             forward_rate_curve=forward_rate_curve,
-            is_floating_rate=is_floating_rate,
+            is_floating_rate=is_floating_rate
         )
-
-        return Asset(**asset_params)
