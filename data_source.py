@@ -8,11 +8,32 @@ from pathlib import Path
 from decouple import config
 from sqlalchemy import Engine
 
+# Folder containing historical snapshots
+# DATA_DIR = Path(r"T:\EC Credits\secondary clo\Universe Archiving")
+
+# def get_latest_file(pattern: str) -> Path:
+#     """
+#     Returns the latest file in the data directory that matches the given pattern.
+#     """
+#     files = list(DATA_DIR.glob(pattern))
+#     if not files:
+#         raise FileNotFoundError(f"No files found matching pattern: {pattern}")
+#     return max(files, key=lambda x: x.stat().st_birthtime)
+
+# # Get the latest files
+# LOANS_CSV = get_latest_file("Loan-UK-*.csv")
+# DEALS_CSV = get_latest_file("Deal-UK-*.csv")
+# TRANCHES_CSV = get_latest_file("Tranche-UK-*.csv")
+
+# print(f"\nLatest Loan file: {LOANS_CSV}")
+# print(f"Latest Deal file: {DEALS_CSV}")
+# print(f"Latest Tranche file: {TRANCHES_CSV}")
+
 # CSV Files
 DATA_DIR = Path("data")
-LOANS_CSV = DATA_DIR / "loan_uk_20240909.csv"
-DEALS_CSV = DATA_DIR / "deal_uk_20240911.csv"
-TRANCHES_CSV = DATA_DIR / "tranche_uk_20240911.csv"
+LOANS_CSV = DATA_DIR / "Loan-UK-2024-09-23.csv"
+DEALS_CSV = DATA_DIR / "Deal-UK-2024-09-23.csv"
+TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-09-23.csv"
 
 # DB Connections
 DIALECT = 'oracle'
@@ -51,7 +72,7 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 def load_deal_data(deal_id: str):
     with warnings.catch_warnings(action='ignore'):
         deals = pd.read_csv(DEALS_CSV)
-        loans = pd.read_csv(LOANS_CSV)
+        loans = pd.read_csv(LOANS_CSV, low_memory=False)
         tranches = pd.read_csv(TRANCHES_CSV)
 
     # Clean the dataframes
