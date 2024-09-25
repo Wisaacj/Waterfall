@@ -27,15 +27,18 @@ class ResultsWriter:
         return self.output_dir / self.deal_id
     
     def write_asset_cashflows(self) -> str:
+        self.output_path.mkdir(exist_ok=True)
         self._export_asset_histories()
         return self.output_dir.absolute()
 
     def write_tranche_cashflows(self) -> str:
+        self.output_path.mkdir(exist_ok=True)
         for tranche in tqdm(self.model.tranches, desc="Exporting tranche histories"):
             self._export_history_to_excel(tranche.history, tranche.rating)
         return self.output_dir.absolute()
 
     def write_results(self) -> str:
+        self.output_path.mkdir(exist_ok=True)
         self.write_asset_cashflows()
         self.write_tranche_cashflows()
         return self.output_dir.absolute()
@@ -75,8 +78,8 @@ class ResultsWriter:
         """Create a summary DataFrame with weighted average interest rate."""
         sum_cols = grouped.sum()
         weighted_rate = grouped.apply(self._safe_weighted_average)
-        summary = sum_cols.drop('interest_rate', axis=1)
-        summary['interest_rate'] = weighted_rate
+        summary = sum_cols.drop('coupon', axis=1)
+        summary['coupon'] = weighted_rate
         return summary
 
     def _export_history_to_excel(self, snapshots: list[Snapshot], filename: str):
@@ -85,7 +88,6 @@ class ResultsWriter:
         data = [ResultsWriter._snapshot_to_dict(snapshot) for snapshot in snapshots]
         cashflows_df = pd.DataFrame(data)
         
-        self.output_path.mkdir(exist_ok=True)
         excel_path = self.output_path / f"{filename}.xlsx"
         with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
             cashflows_df.to_excel(writer, sheet_name=filename)
@@ -100,7 +102,7 @@ class ResultsWriter:
     def _safe_weighted_average(group):
         """Calculate weighted average, handling zero-sum weights."""
         try:
-            return np.average(group['interest_rate'], weights=group['balance'])
+            return np.average(group['coupon'], weights=group['balance'])
         except ZeroDivisionError:
             return 0
         
