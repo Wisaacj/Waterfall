@@ -28,7 +28,7 @@ class ForwardRateCurve:
         self.interpolator = interpolate.interp1d(
             [d.toordinal() for d in dates],
             rates,
-            kind='linear',  # Use cubic splines to interpolate between points.
+            kind='linear', 
             # Do not raise an error if the interpolation is out of bounds.
             bounds_error=False,
             # Use the first or last known rate if the interpolation is out of bounds.
@@ -42,7 +42,7 @@ class ForwardRateCurve:
         :param dt: the date to get the rate for.
         :return: the rate for the given date.
         """
-        return self.interpolator(dt.toordinal())
+        return self.interpolator(dt.toordinal()).item()
 
     def get_average_rate(self, start: date, end: date) -> float:
         """
