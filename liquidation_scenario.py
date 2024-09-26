@@ -19,11 +19,13 @@ def main():
     parser.add_argument("--cpr_lockout_months", type=int, default=0, help="Number of months to lock out CPR (default: 0)")
     parser.add_argument("--cdr", type=float, default=0.0, help="Constant Default Rate (default: 0.0)")
     parser.add_argument("--cdr_lockout_months", type=int, default=0, help="Number of months to lock out CDR (default: 0)")
-    parser.add_argument("--recovery_rate", type=float, default=1.0, help="Recovery rate (default: 1.0)")    
+    parser.add_argument("--recovery_rate", type=float, default=0.50, help="Recovery rate (default: 0.50)")
     parser.add_argument("--payment_frequency", type=int, default=4, help="Payment frequency (default: 4)")
     parser.add_argument("--simulation_frequency", type=int, default=12, help="Simulation frequency (default: 12)")
+    parser.add_argument("--rp_extension_months", type=int, default=0, help="Reinvestment period extension in months (default: 0)")
     parser.add_argument("--reinvestment_asset_maturity_months", type=int, default=72, help="Reinvestment asset maturity in months (default: 72)")
     parser.add_argument("--output_path", type=Path, default=Path("outputs"), help="Path to save the output files (default: ./outputs)")
+    parser.add_argument("--output_asset_cashflows", type=bool, default=True, help="Output asset cashflows to CSV (default: True)")
 
     args = parser.parse_args()
 
@@ -43,7 +45,8 @@ def main():
     factory = CLOFactory(
         deal, tranches, loans, forward_curves, args.cpr, args.cdr, 
         args.cpr_lockout_months, args.cdr_lockout_months, args.recovery_rate,
-        args.payment_frequency, args.simulation_frequency, args.reinvestment_asset_maturity_months
+        args.payment_frequency, args.simulation_frequency, args.reinvestment_asset_maturity_months,
+        args.rp_extension_months
     )
     model = factory.build()
     print("    > Model built")
@@ -52,9 +55,12 @@ def main():
     model.liquidate(accrual_date, liquidation_date)
     print("    > Scenario simulation complete")
     
-    print("Writing results to disk...")
-    path = ResultsWriter(model, args.deal_id, args.output_path).write_results()
-    print(f"    > Results written to '{path}'\n")
+    path = ResultsWriter(model, args.deal_id, args.output_path).write_tranche_cashflows()
+    print(f"    > Tranche cashflows written to '{path}'")
+
+    if args.output_asset_cashflows:
+        path = ResultsWriter(model, args.deal_id, args.output_path).write_asset_cashflows()
+        print(f"    > Asset cashflows written to '{path}'\n")
 
 
 def debug():
@@ -85,4 +91,4 @@ def debug():
 
 
 if __name__ == "__main__":
-    debug()
+    main()

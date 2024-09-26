@@ -7,7 +7,7 @@ from results_writer import ResultsWriter
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Simulate CLO cashflows to maturity based on provided parameters.")
+    parser = argparse.ArgumentParser(description="Simulate CLO cashflows to maturity based on provided assumptions.")
     parser.add_argument("--deal_id", required=True, type=str, help="The ID of the deal to simulate.")
     
     # Add arguments for each assumption
@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--recovery_rate", type=float, default=0.50, help="Recovery rate (default: 0.50)")
     parser.add_argument("--payment_frequency", type=int, default=4, help="Payment frequency (default: 4)")
     parser.add_argument("--simulation_frequency", type=int, default=12, help="Simulation frequency (default: 12)")
+    parser.add_argument("--rp_extension_months", type=int, default=0, help="Reinvestment period extension in months (default: 0)")
     parser.add_argument("--reinvestment_asset_maturity_months", type=int, default=72, help="Reinvestment asset maturity in months (default: 72)")
     parser.add_argument("--output_path", type=Path, default=Path("outputs"), help="Path to save the output files (default: ./outputs)")
     parser.add_argument("--output_asset_cashflows", type=bool, default=True, help="Output asset cashflows to CSV (default: True)")
@@ -37,7 +38,8 @@ def main():
     factory = CLOFactory(
         deal, tranches, loans, forward_curves, args.cpr, args.cdr, 
         args.cpr_lockout_months, args.cdr_lockout_months, args.recovery_rate,
-        args.payment_frequency, args.simulation_frequency, args.reinvestment_asset_maturity_months
+        args.payment_frequency, args.simulation_frequency, args.reinvestment_asset_maturity_months,
+        args.rp_extension_months
     )
     model = factory.build()
     print("    > Model built")

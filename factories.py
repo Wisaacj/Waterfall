@@ -40,6 +40,7 @@ class CLOFactory:
             payment_frequency: int,
             simulation_frequency: int,
             reinvestment_maturity_months: int,
+            rp_extension_months: int,
     ):
         self.report_date = date.today() # Ask about this...
 
@@ -60,10 +61,11 @@ class CLOFactory:
         self.payment_interval = relativedelta(months=(12/payment_frequency))
         self.simulation_interval = relativedelta(months=(12/simulation_frequency))
         self.reinvestment_maturity_months = reinvestment_maturity_months
+        self.rp_extension_months = rp_extension_months
 
         # Important dates
         self.reinvestment_end_date = parser.parse(
-            deal_data['reinvestment_enddate'], dayfirst=True).date()
+            deal_data['reinvestment_enddate'], dayfirst=True).date() + relativedelta(months=rp_extension_months)
         self.next_payment_date = parser.parse(
             deal_data['next_pay_date'], dayfirst=True).date()
         self.non_call_end_date = parser.parse(
@@ -176,11 +178,16 @@ class AccountFactory:
     def build(self):
         principal_balance = self.deal_data['collection_acc_principal_bal']
         principal_account = Account(principal_balance)
+        
         # FIXME: Remove these hard-coded values
         # For SCULE7
-        interest_account = Account(2710770.13)
+        # interest_account = Account(2710770.13)
+
         # For JUBIL20
         # interest_account = Account(3215276.35)
+
+        # For GRIFP
+        interest_account = Account(1603112.56)
 
         return principal_account, interest_account
     
