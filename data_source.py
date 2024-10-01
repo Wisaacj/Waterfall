@@ -3,37 +3,19 @@ import warnings
 import pandas as pd
 import sqlalchemy
 import utils
+import functools
 
 from pathlib import Path
 from decouple import config
 from sqlalchemy import Engine
 
-# Folder containing historical snapshots
-# DATA_DIR = Path(r"T:\EC Credits\secondary clo\Universe Archiving")
-
-# def get_latest_file(pattern: str) -> Path:
-#     """
-#     Returns the latest file in the data directory that matches the given pattern.
-#     """
-#     files = list(DATA_DIR.glob(pattern))
-#     if not files:
-#         raise FileNotFoundError(f"No files found matching pattern: {pattern}")
-#     return max(files, key=lambda x: x.stat().st_birthtime)
-
-# # Get the latest files
-# LOANS_CSV = get_latest_file("Loan-UK-*.csv")
-# DEALS_CSV = get_latest_file("Deal-UK-*.csv")
-# TRANCHES_CSV = get_latest_file("Tranche-UK-*.csv")
-
-# print(f"\nLatest Loan file: {LOANS_CSV}")
-# print(f"Latest Deal file: {DEALS_CSV}")
-# print(f"Latest Tranche file: {TRANCHES_CSV}")
 
 # CSV Files
 DATA_DIR = Path("data")
 LOANS_CSV = DATA_DIR / "Loan-UK-2024-09-23.csv"
 DEALS_CSV = DATA_DIR / "Deal-UK-2024-09-23.csv"
 TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-09-23.csv"
+REPO_REPORT_XLSX = DATA_DIR / "RepoLight - 23-09-2024.xlsx"
 
 # DB Connections
 DIALECT = 'oracle'
@@ -46,7 +28,7 @@ SERVICE = 'PLI'
 ENGINE_PATH_WITH_AUTH = f"{DIALECT}+{SQL_DRIVER}://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{SERVICE}"
 US_ORACLE_CONNECTION_PROD = sqlalchemy.create_engine(ENGINE_PATH_WITH_AUTH)
 
-# Default Oracle Tables
+# Oracle Tables
 ORACLE_CURVES = "FO_SEC.CF_VECTOR_ITX_RATES"
 
 
@@ -65,20 +47,53 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     column_mapping = {col: to_snake_case(col) for col in df.columns}
     # Rename the columns using the mapping
     df = df.rename(columns=column_mapping)
+    # Drop rows & columns full of NaNs.
+    df = df.dropna(how='all', axis=1)
+    df = df.dropna(how='all', axis=0)
 
     return df
 
 
-def load_deal_data(deal_id: str):
+@functools.lru_cache(maxsize=1)
+def load_universe_data(
+        loans_csv: Path = LOANS_CSV,
+        deals_csv: Path = DEALS_CSV,
+        tranches_csv: Path = TRANCHES_CSV
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Loads all the data for the universe (all deals, loans, and tranches) from CSV files.
+    Cleans the dataframes and caches the result using lru_cache.
+    """
     with warnings.catch_warnings(action='ignore'):
-        deals = pd.read_csv(DEALS_CSV)
-        loans = pd.read_csv(LOANS_CSV, low_memory=False)
-        tranches = pd.read_csv(TRANCHES_CSV)
+        loans = pd.read_csv(loans_csv, low_memory=False)
+        deals = pd.read_csv(deals_csv)
+        tranches = pd.read_csv(tranches_csv)
 
     # Clean the dataframes
-    deals = clean_dataframe(deals)
     loans = clean_dataframe(loans)
+    deals = clean_dataframe(deals)
     tranches = clean_dataframe(tranches)
+
+    return deals, loans, tranches
+
+
+@functools.lru_cache(maxsize=1)
+def load_napier_holdings_data(repo_report_xlsx: Path = REPO_REPORT_XLSX) -> pd.DataFrame:
+    """
+    Loads the repo report from an Excel file.
+    Cleans the dataframe and caches the result using lru_cache.
+    """
+    with warnings.catch_warnings(action='ignore'):
+        repo_report = pd.read_excel(repo_report_xlsx)
+
+    # Clean the dataframe
+    repo_report = clean_dataframe(repo_report)
+
+    return repo_report
+
+
+def load_deal_data(deal_id: str):
+    deals, loans, tranches = load_universe_data()
 
     # Filter for the relevant deal.
     deals = deals[deals['deal_id'] == deal_id]
@@ -88,26 +103,21 @@ def load_deal_data(deal_id: str):
     # Ignore equity assets.
     loans = loans[loans['type'] != 'Equity']
     # Fill NaNs.
-    tranches.fillna({'margin': 0}, inplace=True)
+    with warnings.catch_warnings(action='ignore'):
+        tranches.fillna({'margin': 0}, inplace=True)
     # Convert `deals` to a series.
     deal = deals.iloc[0]
 
     return deal, loans, tranches
 
 
-def load_loan_data(deal_id: str) -> pd.DataFrame:
-    loans = pd.read_csv(LOANS_CSV, low_memory=False)
-
-    # Clean dataframe
-    loans = clean_dataframe(loans)
-    # Filter for the relevant deal
-    loans = loans[loans['dealid'] == deal_id]
-    # Ignore equity assets
-    loans = loans[loans['type'] != 'Equity']
-
-    return loans
+def load_deal_holdings_data(deal_id: str) -> pd.DataFrame:
+    repo_report = load_napier_holdings_data()
+    repo_report = repo_report[repo_report['intex_id'] == deal_id]
+    return repo_report
 
 
+@functools.lru_cache(maxsize=1)
 def load_latest_forward_curves(
         forward_curves_table: str = ORACLE_CURVES, 
         us_oracle_db: Engine = US_ORACLE_CONNECTION_PROD, 
