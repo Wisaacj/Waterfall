@@ -1,8 +1,8 @@
 import pyxirr
-from datetime import date
 
-from .snapshots import Snapshot
+from datetime import date
 from pyxirr import DayCount
+from .snapshots import Snapshot
 
 
 class InterestVehicle:
@@ -62,3 +62,19 @@ class InterestVehicle:
         accrual = self.balance * year_factor * self.interest_rate
         self.interest_accrued += accrual
         self.period_accrual += accrual
+
+    def irr(self, purchase_price: float) -> float:
+        """
+        Calculates the IRR of the vehicle.
+        
+        :param purchase_price: the price at which the vehicle was purchased.
+        :return: the IRR of the vehicle.
+        """
+        orig_balance = self.history[0].balance
+        purchase_cost = -1 * (purchase_price * orig_balance)
+        cashflows = [snapshot.interest_paid + snapshot.principal_paid 
+                     for snapshot in self.history]
+        cashflows[0] += purchase_cost
+        dates = [snapshot.date for snapshot in self.history]
+
+        return pyxirr.xirr(dates, cashflows)
