@@ -1,6 +1,9 @@
+import numpy as np
+
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
+from . import day_counter
 from .account import Account
 from .asset import Asset
 from .enums import *
@@ -93,6 +96,7 @@ class CLO:
         self.take_snapshot()
         
         self.next_payment_date = next_payment_date
+        self.payment_day = next_payment_date.day
         self.calc_first_simulation_date(report_date)
 
         self.non_call_end_date = non_call_end_date
@@ -202,10 +206,11 @@ class CLO:
                 self.next_payment_date += self.payment_interval
             
             self.take_snapshot()
-            
             self.last_simulation_date = self.simulate_until
+
             # Bump the next simulation date forward. Simulate at 1 month intervals.
             self.simulate_until = self.simulate_until + relativedelta(months=1)
+            self.simulate_until = day_counter.safely_set_day(self.simulate_until, self.payment_day)
 
     def liquidate(self, accrual_date: date, liquidation_date: date):
         self.in_liquidation = True
@@ -267,10 +272,15 @@ class CLO:
         # The price of a reinvestment asset shouldn't be higher than 100%.
         price = min(self.portfolio.weighted_average_price, 1)
         coupon = self.portfolio.weighted_average_coupon
+        spread = self.portfolio.weighted_average_spread
+        cpr_lockout_end_date = self.portfolio.cpr_lockout_end_date
+        cdr_lockout_end_date = self.portfolio.cdr_lockout_end_date
+        curve = self.portfolio.forward_rate_curves['EURIBOR_3MO']
         balance = cash / price
 
-        return Asset(name, balance, price, coupon, self.payment_frequency, 
-            current_date, next_payment_date, maturity, self.cpr, self.cdr, self.recovery_rate)
+        return Asset(name, AssetKind.Loan, balance, price, spread, coupon, self.payment_frequency, 
+            current_date, next_payment_date, maturity, cpr_lockout_end_date, cdr_lockout_end_date,
+            self.cpr, self.cdr, self.recovery_rate, curve, is_floating_rate=True)
         
     def calc_first_simulation_date(self, report_date: date):
         """
