@@ -1,4 +1,5 @@
 import argparse
+import common_args
 import data_source
 
 from pathlib import Path
@@ -13,19 +14,7 @@ def main():
     parser.add_argument("--deal_id", required=True, type=str, help="The ID of the deal to simulate.")
     parser.add_argument("--accrual_date", required=True, type=lambda s: date.fromisoformat(s),  help="Accrual date in ISO format YYYY-MM-DD (default: 9999-12-31)")
     parser.add_argument("--liquidation_date", required=True, type=lambda s: date.fromisoformat(s), help="Liquidation date in ISO format YYYY-MM-DD (default: 9999-12-31)")
-
-    # Add arguments for each assumption
-    parser.add_argument("--cpr", type=float, default=0.0, help="Constant Prepayment Rate (default: 0.0)")
-    parser.add_argument("--cpr_lockout_months", type=int, default=0, help="Number of months to lock out CPR (default: 0)")
-    parser.add_argument("--cdr", type=float, default=0.0, help="Constant Default Rate (default: 0.0)")
-    parser.add_argument("--cdr_lockout_months", type=int, default=0, help="Number of months to lock out CDR (default: 0)")
-    parser.add_argument("--recovery_rate", type=float, default=0.50, help="Recovery rate (default: 0.50)")
-    parser.add_argument("--payment_frequency", type=int, default=4, help="Payment frequency (default: 4)")
-    parser.add_argument("--simulation_frequency", type=int, default=12, help="Simulation frequency (default: 12)")
-    parser.add_argument("--rp_extension_months", type=int, default=0, help="Reinvestment period extension in months (default: 0)")
-    parser.add_argument("--reinvestment_asset_maturity_months", type=int, default=72, help="Reinvestment asset maturity in months (default: 72)")
-    parser.add_argument("--output_path", type=Path, default=Path("outputs"), help="Path to save the output files (default: ./outputs)")
-    parser.add_argument("--output_asset_cashflows", type=bool, default=True, help="Output asset cashflows to CSV (default: True)")
+    parser = common_args.add_clo_assumptions(parser)
 
     args = parser.parse_args()
 
