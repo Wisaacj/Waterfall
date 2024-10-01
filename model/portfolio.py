@@ -2,19 +2,20 @@ from datetime import date
 
 from .asset import Asset
 from .account import Account
-
+from .forward_rate_curve import ForwardRateCurve
 
 class Portfolio:
     """
     Class representing a Portfolio of assets.
     """
-    def __init__(self, assets: list[Asset]):
+    def __init__(self, assets: list[Asset], forward_rate_curves: dict[str, ForwardRateCurve]):
         """
         Instantiates a Portfolio of Assets.
         
         :param assets: a list of assets.
         """
         self.assets = assets
+        self.forward_rate_curves = forward_rate_curves
         self.last_simulation_date = self.assets[0].last_simulation_date
         
     def __str__(self):
@@ -30,8 +31,8 @@ class Portfolio:
         
         :param simulate_until: as the name suggests.
         """
-        if simulate_until == self.last_simulation_date:
-            raise Exception("debug this or I will shank you")
+        # if simulate_until == self.last_simulation_date:
+        #     raise Exception("debug this or I will shank you")
         
         for asset in self.assets:
             asset.simulate(simulate_until)
@@ -76,7 +77,19 @@ class Portfolio:
         total_asset_balance = self.total_asset_balance
         
         try:
-            return sum(asset.coupon * (asset.balance / total_asset_balance) for asset in self.assets)
+            return sum(asset.interest_rate * (asset.balance / total_asset_balance) for asset in self.assets)
+        except ZeroDivisionError:
+            return 0
+        
+    @property
+    def weighted_average_spread(self) -> float:
+        """
+        Returns the weighted average spread of the portfolio.
+        """
+        total_asset_balance = self.total_asset_balance
+        
+        try:
+            return sum(asset.spread * (asset.balance / total_asset_balance) for asset in self.assets)
         except ZeroDivisionError:
             return 0
     
@@ -107,6 +120,20 @@ class Portfolio:
         asset's accrued and paid interest are included in the sum.
         """
         return sum((asset.price * asset.balance) + asset.principal_paid + asset.interest_paid + asset.interest_accrued for asset in self.assets)
+    
+    @property
+    def cpr_lockout_end_date(self) -> date:
+        """
+        Returns the date on which the CPR lockout ends.
+        """
+        return self.assets[0].cpr_lockout_end_date
+    
+    @property
+    def cdr_lockout_end_date(self) -> date: 
+        """
+        Returns the date on which the CDR lockout ends.
+        """
+        return self.assets[0].cdr_lockout_end_date
 
     def sweep(self, destination: Account, sweepFunc: str) -> float:
         """
