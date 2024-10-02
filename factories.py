@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 
 from pyxirr import DayCount
@@ -42,7 +43,7 @@ class CLOFactory:
             reinvestment_maturity_months: int,
             rp_extension_months: int,
     ):
-        self.report_date = date.today() # Ask about this...
+        self.report_date = date.today()# - relativedelta(days=1) # Ask about this...
 
         # Factories
         self.tranche_factory = TrancheFactory(tranche_data, self.report_date)
@@ -176,8 +177,9 @@ class AccountFactory:
         self.deal_data = deal_data
 
     def build(self):
-        principal_balance = self.deal_data['collection_acc_principal_bal']
+        principal_balance = float(self.deal_data['collection_acc_principal_bal'])
         principal_account = Account(principal_balance)
+        interest_account = Account(0)
         
         # FIXME: Remove these hard-coded values
         # For SCULE7
@@ -187,7 +189,7 @@ class AccountFactory:
         # interest_account = Account(3215276.35)
 
         # For GRIFP
-        interest_account = Account(1603112.56)
+        # interest_account = Account(1603112.56)
 
         return principal_account, interest_account
     
@@ -203,21 +205,24 @@ class TrancheFactory:
 
     def build(self, euribor_3mo: ForwardRateCurve):
         debt_tranches = []
-        equity_tranche = None
+        equity_tranche = EquityTranche(0, self.report_date)
 
-        for i, item in self.tranche_data.iterrows():
+        for _, item in self.tranche_data.iterrows():
             rating = item['comp_rating']
-            balance = item['cur_balance']
-            coupon = item['coupon'] / 100
-            margin = item['margin'] / 100
+            balance = float(item['cur_balance'])
+            coupon = float(item['coupon']) / 100
+            margin = float(item['margin']) / 100
             is_fixed_rate = 'fix' in item['tranche_type']
-            
+
             if is_fixed_rate:
                 day_count = DayCount.THIRTY_360_ISDA
             else:
                 day_count = DayCount.ACT_360
 
             if rating == 'Equity' or rating == 'EQTY':
+                # There may be "residual" equity tranches in the deal from
+                # before a reissue/reset/refi.
+                balance += equity_tranche.balance
                 equity_tranche = EquityTranche(balance, self.report_date)
             else:
                 tranche = Tranche(rating, balance, margin, coupon, self.report_date,
@@ -247,12 +252,12 @@ class FeeFactory:
         senior_expenses_fixed_fee = 0 # 300_000 
         senior_expenses_variable_fee = 0 # 0.000225
 
-        senior_management_fee = self.deal_data['deal_sen_mgt_fees'] / 100
-        junior_management_fee = self.deal_data['deal_sub_mgt_fees'] / 100
+        senior_management_fee = float(self.deal_data['deal_sen_mgt_fees']) / 100
+        junior_management_fee = float(self.deal_data['deal_sub_mgt_fees']) / 100
 
-        incentive_fee_balance = self.deal_data['deal_inc_mgt_fee_irr_balances']
-        incentive_fee_hurdle_rate = self.deal_data['deal_inc_mgt_fee_irr_threshold'] / 100
-        incentive_fee_diversion_rate = self.deal_data['deal_inc_mgt_fee_excess_pcts'] / 100
+        incentive_fee_balance = float(self.deal_data['deal_inc_mgt_fee_irr_balances'])
+        incentive_fee_hurdle_rate = float(self.deal_data['deal_inc_mgt_fee_irr_threshold']) / 100
+        incentive_fee_diversion_rate = float(self.deal_data['deal_inc_mgt_fee_excess_pcts']) / 100
 
         # The fees' balances are set later by the CLO.
         senior_expenses_fee = Fee(0, senior_expenses_variable_fee,
@@ -294,50 +299,46 @@ class PortfolioFactory:
     def build(self, forward_rate_curves: dict[str, ForwardRateCurve]) -> Portfolio:
         assets = self.collateral_data.apply(
             self.build_asset, axis=1, args=[forward_rate_curves]).tolist()
-        return Portfolio(assets)
+        assets = [a for a in assets if a is not None]
+        return Portfolio(assets, forward_rate_curves)
 
     def build_asset(self, asset_data: pd.Series, forward_rate_curves: dict[str, ForwardRateCurve]) -> Asset:
         figi = asset_data.get('bbg_id')
         asset_kind = AssetKind.from_string(asset_data.get('type'))
         maturity_date = parser.parse(asset_data['maturitydate'], dayfirst=True).date()
+        next_payment_date = parser.parse(asset_data['next_pay_date'], dayfirst=True).date()
         payment_frequency = int(asset_data.get('pay_freq'))
         is_floating_rate = asset_data.get('fix_or_float').lower() == 'float'
+        price = float(asset_data.get('mark_value')) / 100
 
         # Don't add matured assets to the portfolio
         if maturity_date <= self.report_date:
-            raise ValueError(f"asset has already matured: {figi} matures on {maturity_date} but reporting date is {self.report_date}")
+            return None
 
         if not pd.notna(figi):
             figi = asset_data.get('loanxid')
+        if not pd.notna(price):
+            price = 1.0 # Default to 100%
 
         if asset_data.get('defaulted'):
-            coupon = 0.0 # Defaulted assets don't earn interest.
-            spread = 0.0
+            coupon = spread = 0.0 # Defaulted assets don't earn interest.
         else:
-            coupon = asset_data.get('grosscoupon') / 100
-            spread = asset_data.get('spread') / 100
+            coupon = float(asset_data.get('grosscoupon')) / 100
+            spread = float(asset_data.get('spread')) / 100
 
-        match payment_frequency:
-            case 12:
-                forward_rate_curve = forward_rate_curves['EURIBOR_1MO']
-            case 4:
-                forward_rate_curve = forward_rate_curves['EURIBOR_3MO']
-            case 2:
-                forward_rate_curve = forward_rate_curves['EURIBOR_6MO']
-            case _: # Default to 3MO
-                forward_rate_curve = forward_rate_curves['EURIBOR_3MO']
+        forward_rate_curve = forward_rate_curves\
+            .get(f'EURIBOR_{12//payment_frequency}MO', forward_rate_curves['EURIBOR_3MO'])
 
         return Asset(
             figi=figi,
             asset_kind=asset_kind,
             balance=float(asset_data.get('facevalue')),
-            price=asset_data.get('mark_value') / 100,
+            price=price,
             spread=spread,
             initial_coupon=coupon,
             payment_frequency=payment_frequency,
             report_date=self.report_date,
-            next_payment_date=parser.parse(
-                asset_data['next_pay_date'], dayfirst=True).date(),
+            next_payment_date=next_payment_date,
             maturity_date=maturity_date,
             cpr_lockout_end_date=self.cpr_lockout_end_date,
             cdr_lockout_end_date=self.cdr_lockout_end_date,
