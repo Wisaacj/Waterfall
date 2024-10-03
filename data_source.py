@@ -6,6 +6,7 @@ import utils
 import functools
 
 from pathlib import Path
+from datetime import date
 from decouple import config
 from sqlalchemy import Engine
 
@@ -55,14 +56,13 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @functools.lru_cache(maxsize=1)
-def load_universe_data(
+def load_universe(
         loans_csv: Path = LOANS_CSV,
         deals_csv: Path = DEALS_CSV,
         tranches_csv: Path = TRANCHES_CSV
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Loads all the data for the universe (all deals, loans, and tranches) from CSV files.
-    Cleans the dataframes and caches the result using lru_cache.
+    Loads the latest data on the UK CLO universe (deals, loans, and tranches) from CSV files.
     """
     with warnings.catch_warnings(action='ignore'):
         loans = pd.read_csv(loans_csv, low_memory=False)
@@ -77,23 +77,8 @@ def load_universe_data(
     return deals, loans, tranches
 
 
-@functools.lru_cache(maxsize=1)
-def load_napier_holdings_data(repo_report_xlsx: Path = REPO_REPORT_XLSX) -> pd.DataFrame:
-    """
-    Loads the repo report from an Excel file.
-    Cleans the dataframe and caches the result using lru_cache.
-    """
-    with warnings.catch_warnings(action='ignore'):
-        repo_report = pd.read_excel(repo_report_xlsx)
-
-    # Clean the dataframe
-    repo_report = clean_dataframe(repo_report)
-
-    return repo_report
-
-
-def load_deal_data(deal_id: str):
-    deals, loans, tranches = load_universe_data()
+def load_deal(deal_id: str):
+    deals, loans, tranches = load_universe()
 
     # Filter for the relevant deal.
     deals = deals[deals['deal_id'] == deal_id]
@@ -111,8 +96,28 @@ def load_deal_data(deal_id: str):
     return deal, loans, tranches
 
 
-def load_deal_holdings_data(deal_id: str) -> pd.DataFrame:
-    repo_report = load_napier_holdings_data()
+@functools.lru_cache(maxsize=1)
+def load_napier_holdings(repo_report_xlsx: Path = REPO_REPORT_XLSX) -> pd.DataFrame:
+    """
+    Loads Napier Park's asset holdings from our internal repo report.
+    """
+    with warnings.catch_warnings(action='ignore'):
+        repo_report = pd.read_excel(repo_report_xlsx)
+
+    # Clean the dataframe
+    repo_report = clean_dataframe(repo_report)
+
+    return repo_report
+
+
+def load_deal_holdings(deal_id: str) -> pd.DataFrame:
+    """
+    Loads Napier Park's asset holdings for a given deal.
+
+    :param deal_id: The ID of the deal to load holdings for.
+    :return: A dataframe of Napier Park's asset holdings for the given deal.
+    """
+    repo_report = load_napier_holdings()
     repo_report = repo_report[repo_report['intex_id'] == deal_id]
     return repo_report
 
@@ -154,6 +159,68 @@ def load_latest_forward_curves(
     
     curves = pd.read_sql(query, us_oracle_db)
     
+    curves_split = curves['rate'].str.split(' ', expand=True)
+    future_dates = [
+        (curves['value_dt'].iloc[0] + pd.DateOffset(months=i + 1)).strftime('%Y-%m-%d')
+        for i in range(curves_split.shape[1])
+    ]
+    
+    curves_split.columns = future_dates
+    df_combined = pd.concat([curves, curves_split], axis=1).drop(columns=['rate'])
+    
+    df_melted = df_combined.melt(
+        id_vars=['curve', 'value_dt'], 
+        var_name='future_date', 
+        value_name='value'
+    )
+    
+    df_melted = df_melted.dropna(subset=['value_dt'])
+    df_melted = df_melted[df_melted.value != '']
+    df_melted['value'] = df_melted['value'].astype(float)
+    
+    df_pivoted = df_melted.pivot_table(
+        index='future_date', 
+        columns='curve', 
+        values='value'
+    )
+    
+    df_pivoted = df_pivoted.sort_index().reset_index()
+    df_pivoted = df_pivoted.rename(columns={'future_date': 'reporting_date'})
+    
+    return df_pivoted
+
+
+@functools.lru_cache(maxsize=1)
+def load_forward_curves(
+        as_of_date: date = date.today(),
+        forward_curves_table: str = ORACLE_CURVES, 
+        us_oracle_db: Engine = US_ORACLE_CONNECTION_PROD, 
+        custom_indices: list[str] = None
+    ) -> pd.DataFrame:
+    default_indices = ['EURIBOR_1MO', 'EURIBOR_3MO', 'EURIBOR_6MO']
+    indices = utils.format_list_to_sql_string(custom_indices or default_indices)
+
+    query = f"""
+    WITH ranked_curves AS (
+        SELECT 
+            value_dt,
+            key AS curve,
+            val as rate,
+            create_dt,
+            ROW_NUMBER() OVER (PARTITION BY key ORDER BY create_dt DESC) as rn
+        FROM {forward_curves_table}
+        WHERE 
+            key IN ({indices})
+            AND type = 'fwdrate'
+            AND TRUNC(create_dt) <= TO_DATE('{as_of_date.strftime('%Y-%m-%d')}', 'YYYY-MM-DD')
+    )
+    SELECT value_dt, curve, rate
+    FROM ranked_curves
+    WHERE rn = 1
+    """
+
+    curves = pd.read_sql(query, us_oracle_db)
+
     curves_split = curves['rate'].str.split(' ', expand=True)
     future_dates = [
         (curves['value_dt'].iloc[0] + pd.DateOffset(months=i + 1)).strftime('%Y-%m-%d')

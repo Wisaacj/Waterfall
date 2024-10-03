@@ -10,7 +10,7 @@ from factories import CLOFactory
 
 def universe_irrs(args: argparse.Namespace) -> pd.DataFrame:
     # Load Napier holdings into memory.
-    napier_holdings = data_source.load_napier_holdings_data()
+    napier_holdings = data_source.load_napier_holdings()
     # Only consider deals we own equity in (for the time being).
     napier_holdings = napier_holdings[napier_holdings["orig_rtg"] == "Equity"]
     
@@ -43,8 +43,8 @@ def universe_irrs(args: argparse.Namespace) -> pd.DataFrame:
 
 
 def deal_irrs(deal_id: str, args: argparse.Namespace) -> float:
-    deal, loans, tranches = data_source.load_deal_data(deal_id)
-    deal_holdings = data_source.load_deal_holdings_data(deal_id)
+    deal, loans, tranches = data_source.load_deal(deal_id)
+    deal_holdings = data_source.load_deal_holdings(deal_id)
     forward_curves = data_source.load_latest_forward_curves()
 
     factory = CLOFactory(

@@ -23,7 +23,7 @@ def main():
     liquidation_date = args.liquidation_date
 
     print(f"\nLoading deal, tranche, & loan data for {deal_id} from disk...")
-    deal, loans, tranches = data_source.load_deal_data(deal_id)
+    deal, loans, tranches = data_source.load_deal(deal_id)
     print(f"    > Loaded deal data")
 
     print(f"Loading the latest forward-rate curves from DB (US Oracle)...")
@@ -44,12 +44,12 @@ def main():
     model.liquidate(accrual_date, liquidation_date)
     print("    > Scenario simulation complete")
     
-    path = ResultsWriter(model, args.deal_id, args.output_path).write_tranche_cashflows()
-    print(f"    > Tranche cashflows written to '{path}'")
-
+    print(f"Writing results for {deal_id} to disk...")
+    writer = ResultsWriter(model, deal_id, args.output_path)
     if args.output_asset_cashflows:
-        path = ResultsWriter(model, args.deal_id, args.output_path).write_asset_cashflows()
-        print(f"    > Asset cashflows written to '{path}'\n")
+        writer.include_assets()
+    path = writer.include_tranches().write()
+    print(f"    > Results written to '{path}'\n")
 
 
 def debug():
@@ -58,7 +58,7 @@ def debug():
     liquidation_date = date(2024, 10, 15)
 
     print(f"\nLoading deal, tranche, & loan data for {deal_id} from disk...")
-    deal, loans, tranches = data_source.load_deal_data(deal_id)
+    deal, loans, tranches = data_source.load_deal(deal_id)
     print(f"    > Loaded deal data")
 
     print(f"Loading the latest forward-rate curves from DB (US Oracle)...")
@@ -75,7 +75,10 @@ def debug():
     print("    > Scenario simulation complete")
     
     print("Writing results to disk...")
-    path = ResultsWriter(model, deal_id).write_results()
+    path = ResultsWriter(model, deal_id)\
+        .include_tranches()\
+        .include_assets()\
+        .write()
     print(f"    > Results written to '{path}'\n")
 
 

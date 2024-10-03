@@ -6,8 +6,6 @@ from pathlib import Path
 from collections import Counter
 from model import CLO, Snapshot
 
-OUTPUT_DIR = Path("outputs")
-
 
 class ResultsWriter:
 
@@ -15,35 +13,37 @@ class ResultsWriter:
         self, 
         model: CLO, 
         deal_id: str,
-        output_dir: Path = OUTPUT_DIR
+        output_dir: Path = Path("outputs")
     ):
         self.model = model
         self.deal_id = deal_id
         self.output_dir = output_dir
+        self.requested_results = []
         output_dir.mkdir(exist_ok=True)
 
     @property
     def output_path(self) -> Path:
         return self.output_dir / self.deal_id
     
-    def write_asset_cashflows(self) -> str:
-        self.output_path.mkdir(exist_ok=True)
-        self._export_asset_histories()
-        return self.output_dir.absolute()
+    def include_assets(self) -> 'ResultsWriter':
+        self.requested_results.append(self._write_asset_cashflows)
+        return self
 
-    def write_tranche_cashflows(self) -> str:
+    def include_tranches(self) -> 'ResultsWriter':
+        self.requested_results.append(self._write_tranche_cashflows)
+        return self
+
+    def write(self) -> str:
         self.output_path.mkdir(exist_ok=True)
+        for write_func in self.requested_results:
+            write_func()
+        return self.output_path.absolute()
+    
+    def _write_tranche_cashflows(self) -> str:
         for tranche in tqdm(self.model.tranches, desc="Exporting tranche histories"):
             self._export_history_to_excel(tranche.history, tranche.rating)
-        return self.output_dir.absolute()
-
-    def write_results(self) -> str:
-        self.output_path.mkdir(exist_ok=True)
-        self.write_asset_cashflows()
-        self.write_tranche_cashflows()
-        return self.output_dir.absolute()
-
-    def _export_asset_histories(self):
+    
+    def _write_asset_cashflows(self) -> str:
         """Exports the history of all assets in the portfolio to a single Excel file."""
 
         all_asset_data = []
