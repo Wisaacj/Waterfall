@@ -320,11 +320,11 @@ class PortfolioFactory:
         if not pd.notna(price):
             price = 1.0 # Default to 100%
 
-        if asset_data.get('defaulted'):
-            coupon = spread = 0.0 # Defaulted assets don't earn interest.
-        else:
-            coupon = float(asset_data.get('grosscoupon')) / 100
-            spread = float(asset_data.get('spread')) / 100
+        # if asset_data.get('defaulted'):
+        #     coupon = spread = 0.0 # Defaulted assets don't earn interest.
+        # else:
+        coupon = float(asset_data.get('grosscoupon')) / 100
+        spread = float(asset_data.get('spread')) / 100
 
         forward_rate_curve = forward_rate_curves\
             .get(f'EURIBOR_{12//payment_frequency}MO', forward_rate_curves['EURIBOR_3MO'])
