@@ -13,9 +13,9 @@ from sqlalchemy import Engine
 
 # CSV Files
 DATA_DIR = Path("data")
-LOANS_CSV = DATA_DIR / "Loan-UK-2024-09-23.csv"
-DEALS_CSV = DATA_DIR / "Deal-UK-2024-09-23.csv"
-TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-09-23.csv"
+LOANS_CSV = DATA_DIR / "Loan-UK-2024-09-30.csv"
+DEALS_CSV = DATA_DIR / "Deal-UK-2024-10-04.csv"
+TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-10-04.csv"
 REPO_REPORT_XLSX = DATA_DIR / "RepoLight - 23-09-2024.xlsx"
 
 # DB Connections
@@ -36,12 +36,13 @@ ORACLE_CURVES = "FO_SEC.CF_VECTOR_ITX_RATES"
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     def to_snake_case(name: str) -> str:
-        # Remove special characters.
-        name = re.sub(r'[^\w\s]', '', name)
-        # Convert to lowercase and replace spaces with underscores.
-        name = re.sub(r'\s+', '_', name.strip().lower())
-        # Remove consecutive underscores.
-        name = re.sub(r'_+', '_', name)
+        if type(name) == str:
+            # Remove special characters.
+            name = re.sub(r'[^\w\s]', '', name)
+            # Convert to lowercase and replace spaces with underscores.
+            name = re.sub(r'\s+', '_', name.strip().lower())
+            # Remove consecutive underscores.
+            name = re.sub(r'_+', '_', name)
         return name
     
     # Create a dictionary to map old column names to new snake_case names.
