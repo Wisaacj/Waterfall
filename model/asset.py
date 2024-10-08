@@ -71,12 +71,10 @@ class Asset(InterestVehicle):
 
         self.payment_frequency = payment_frequency
         self.payment_interval = relativedelta(months=(12/payment_frequency))
-
         self.simulating_interim_period = False
 
-        # Backdate the interest accrued to the amount accrued between
-        # the last payment and report dates.
-        self.interest_accrued = self.calc_backdated_accrued_interest()
+        # History of cashflows.
+        self.history = []
 
         # These are used to keep track of the flow of principal when a payment
         # date lies inbetween two simulation dates.
@@ -85,11 +83,15 @@ class Asset(InterestVehicle):
         self.recovered_principal = 0
         self.unscheduled_principal = 0
 
-        # History of cashflows.
-        self.history = []
+        # Calculate the prior payment date
+        self.prior_payment_date = self.next_payment_date - self.payment_interval
 
-        # Take a snapshot of the initial state of the asset.
-        self.take_snapshot(report_date)
+        # Calculate the initial accrued interest wtihout triggering a full simulation
+        initial_accrual = self.calc_backdated_accrued_interest()
+        self.interest_accrued += initial_accrual
+
+        # Take an intitial snapshot.
+        self.take_snapshot(self.report_date)
 
     def __str__(self) -> str:
         """
@@ -164,7 +166,7 @@ class Asset(InterestVehicle):
             self.interest_accrued = 0
 
             # Fix coupon for the next accrual period.
-            self.update_coupon(simulate_until + relativedelta(months=1))
+            self.update_coupon(simulate_until)# + relativedelta(months=1))
 
             # Bump the next payment date forward by the payment interval.
             self.next_payment_date += self.payment_interval
@@ -307,27 +309,12 @@ class Asset(InterestVehicle):
         self.principal_paid = 0
 
         return amount
-
-    def calc_prior_payment_date(self, comparison_date: date) -> date:
-        """
-        Calculates the payment date prior to a comparison date.
-
-        :param comparison_date: the date you want the prior payment date to.
-        :return: the prior payment date.
-        """
-        prior_payment_date = self.next_payment_date
-
-        while prior_payment_date > comparison_date:
-            prior_payment_date -= self.payment_interval
-
-        return prior_payment_date
-
+    
     def calc_backdated_accrued_interest(self) -> float:
         """
         Calculates the interest accrued between the last payment date and the report date.
         """
-        year_factor = self.calc_year_factor(
-            self.report_date, self.calc_prior_payment_date(self.report_date))
+        year_factor = self.calc_year_factor(self.report_date, self.prior_payment_date)
         return self.balance * year_factor * self.interest_rate
 
     def take_snapshot(self, as_of: date) -> None:
