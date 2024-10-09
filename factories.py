@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 
 from pyxirr import DayCount
@@ -40,10 +39,11 @@ class CLOFactory:
             recovery_rate: float,
             payment_frequency: int,
             simulation_frequency: int,
-            reinvestment_maturity_months: int,
             rp_extension_months: int,
+            reinvestment_maturity_months: int,
+            assumed_wal_limit_years: int,
     ):
-        self.report_date = date.today()# - relativedelta(days=1) # Ask about this...
+        self.report_date = date.today()
 
         # Factories
         self.tranche_factory = TrancheFactory(tranche_data, self.report_date)
@@ -61,9 +61,9 @@ class CLOFactory:
         self.payment_frequency = payment_frequency
         self.payment_interval = relativedelta(months=(12/payment_frequency))
         self.simulation_interval = relativedelta(months=(12/simulation_frequency))
-        self.reinvestment_maturity_months = reinvestment_maturity_months
         self.rp_extension_months = rp_extension_months
-
+        self.reinvestment_maturity_months = reinvestment_maturity_months
+        
         # Important dates
         self.reinvestment_end_date = parser.parse(
             deal_data['reinvestment_enddate'], dayfirst=True).date() + relativedelta(months=rp_extension_months)
@@ -71,6 +71,12 @@ class CLOFactory:
             deal_data['next_pay_date'], dayfirst=True).date()
         self.non_call_end_date = parser.parse(
             deal_data['non_call_date'], dayfirst=True).date()
+        
+        # Tests
+        if pd.notna(deal_data['wal_limit']):
+            self.wal_limit_years = float(deal_data['wal_limit'])
+        else:
+            self.wal_limit_years = assumed_wal_limit_years
 
     def build(self):
         forward_rate_curves = self.forward_curve_factory.build()
@@ -103,6 +109,7 @@ class CLOFactory:
             cdr=self.cdr,
             recovery_rate=self.recovery_rate,
             reinvestment_maturity_months=self.reinvestment_maturity_months,
+            wal_limit_years=self.wal_limit_years,
         )
 
 

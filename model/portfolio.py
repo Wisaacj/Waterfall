@@ -1,8 +1,11 @@
-from datetime import date
+import pyxirr
 
+from datetime import date
 from .asset import Asset
 from .account import Account
 from .forward_rate_curve import ForwardRateCurve
+from pyxirr import DayCount
+
 
 class Portfolio:
     """
@@ -17,6 +20,7 @@ class Portfolio:
         self.assets = assets
         self.forward_rate_curves = forward_rate_curves
         self.last_simulation_date = self.assets[0].last_simulation_date
+        self.report_date = self.assets[0].report_date
         
     def __str__(self):
         """
@@ -102,6 +106,18 @@ class Portfolio:
 
         try:
             return sum(asset.price * (asset.balance / total_asset_balance) for asset in self.assets)
+        except ZeroDivisionError:
+            return 0
+        
+    @property
+    def weighted_average_life(self) -> float:
+        """
+        Returns the weighted average life of the portfolio from the report date.
+        """
+        total_asset_balance = self.total_asset_balance
+        
+        try:
+            return sum(pyxirr.year_fraction(self.report_date, asset.maturity, DayCount.ACT_360) * (asset.balance / total_asset_balance) for asset in self.assets)
         except ZeroDivisionError:
             return 0
     

@@ -26,8 +26,8 @@ def main():
     factory = CLOFactory(
         deal, tranches, loans, forward_curves, args.cpr, args.cdr, 
         args.cpr_lockout_months, args.cdr_lockout_months, args.recovery_rate,
-        args.payment_frequency, args.simulation_frequency, args.reinvestment_asset_maturity_months,
-        args.rp_extension_months
+        args.payment_frequency, args.simulation_frequency, args.rp_extension_months,
+        args.reinvestment_maturity_months, args.wal_limit_years
     )
     model = factory.build()
     print("    > Model built")

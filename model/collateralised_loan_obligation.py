@@ -1,3 +1,4 @@
+import pyxirr
 import numpy as np
 
 from datetime import date
@@ -38,6 +39,7 @@ class CLO:
         cdr: float,
         recovery_rate: float,
         reinvestment_maturity_months: int,
+        wal_limit_years: int,
     ):
         """
         Instantiates a CLO.
@@ -68,6 +70,9 @@ class CLO:
         self.report_date = report_date
         self.last_simulation_date = None
         self.simulate_until = report_date
+
+        # Tests
+        self.wal_limit_years = wal_limit_years
 
         # Fees
         self.fees = fees
@@ -266,8 +271,7 @@ class CLO:
         :param current_date: the current date to simulate until.
         :param next_payment_date: the next date the asset is due to pay on.
         """
-        name = f"<RA:{self.num_reinvestment_assets} WA>"
-        maturity = current_date + relativedelta(months=self.reinvestment_maturity_months)
+        name = f"Reinvestment Asset {self.num_reinvestment_assets} (WA)"
                 
         # The price of a reinvestment asset shouldn't be higher than 100%.
         price = min(self.portfolio.weighted_average_price, 1)
@@ -278,10 +282,43 @@ class CLO:
         curve = self.portfolio.forward_rate_curves['EURIBOR_3MO']
         balance = cash / price
 
+        # Calculate the maturity of the reinvestment asset.
+        # maturity = self.calculate_reinvestment_maturity(balance, current_date)
+        maturity = current_date + relativedelta(months=self.reinvestment_maturity_months)
+
         return Asset(name, AssetKind.Loan, balance, price, spread, coupon, self.payment_frequency, 
             current_date, next_payment_date, maturity, cpr_lockout_end_date, cdr_lockout_end_date,
             self.cpr, self.cdr, self.recovery_rate, curve, is_floating_rate=True)
+    
+    def calculate_reinvestment_maturity(self, balance: float, current_date: date) -> date:
+        """
+        Calculates the optimal maturity for a reinvestment asset that maintains the WAL limit.
+
+        :param balance: the balance of the reinvestment asset.
+        :param current_date: the current date of reinvestment.
+        :return: The maturity date for the new asset.
+        :raises ValueError: If no valid maturity can be calculated within the WAL limit.
+        """
+        total_balance = self.portfolio.total_asset_balance + balance
+        current_wal = self.portfolio.weighted_average_life
+
+        # Calculate the maximum allowable WAL contribution from the new asset
+        max_wal_contribution = (self.wal_limit_years * total_balance - current_wal * self.portfolio.total_asset_balance) / balance
         
+        if max_wal_contribution <= 0:
+            raise ValueError("WAL limit has been breached. No valid maturity can be calculated.")
+
+        # Convert the maximum WAL contribution into a maturity in months from the report date
+        max_maturity_months = int(max_wal_contribution * 12)
+        # Calculate the maturity date by adding max_maturity_months to the report date
+        maturity = self.report_date + relativedelta(months=max_maturity_months)
+        # Ensure the maturity is not earlier than one month from the current date
+        maturity = max(maturity, current_date + relativedelta(months=1))
+        # Ensure the maturity is not later than 15 years from the report date
+        maturity = min(maturity, self.report_date + relativedelta(years=15))
+
+        return maturity
+
     def calc_first_simulation_date(self, report_date: date):
         """
         Works out the date from which the simulations should start by stepping back in time
