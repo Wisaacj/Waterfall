@@ -1,6 +1,3 @@
-import pyxirr
-import numpy as np
-
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
@@ -65,7 +62,7 @@ class CLO:
         self.principal_reinvested = 0
         self.num_reinvestment_assets = 0
         self.reinvestment_maturity_months = reinvestment_maturity_months
-        
+
         # Various dates for the CLO
         self.report_date = report_date
         self.last_simulation_date = None
@@ -110,9 +107,17 @@ class CLO:
         self.payment_frequency = payment_frequency
         self.payment_interval = relativedelta(months=(12/payment_frequency))
 
-        # Whether or not the CLO is in the process of being liquidated.
         self.in_liquidation = False
-        self.liquidation_date = date(9999, 12, 31)
+        # Determine the liquidation date of the CLO according to Timo's instructions.
+        if self.report_date <= self.reinvestment_end_date:
+            # Inside the reinvestment period.
+            self.liquidation_date = self.reinvestment_end_date + relativedelta(years=2)
+        else:
+            # Outside the reinvestment period.
+            portfolio_maturity_haircut = 18
+            portfolio_maturity_months = int(self.portfolio.weighted_average_life * 12)
+            haircut_portfolio_maturity = self.report_date + relativedelta(months=portfolio_maturity_months - portfolio_maturity_haircut)
+            self.liquidation_date = min(self.report_date + relativedelta(months=18), haircut_portfolio_maturity)
         
         # We need to backdate all tranche and fee accruals from the last payment date to the report date.
         # We do this by initialising the prior_payment_date of the tranches and fees to the prior payment date.
@@ -167,12 +172,40 @@ class CLO:
         """
         return self.portfolio.total_asset_balance - self.total_debt
     
+    @property
+    def equity_nav(self) -> float:
+        pass
+
+    @property
+    def equity_nav_90(self) -> float:
+        pass
+
+    @property
+    def equity_nav_override(self) -> float:
+        pass
+
+    @property
+    def in_reinvestment_period(self) -> bool:
+        """
+        Returns whether or not the CLO is in the reinvestment period.
+        """
+        return self.simulate_until <= self.reinvestment_end_date
+    
     def simulate(self):
         """
         Simulates the CLO's cashflows until all the assets have matured and the principal balance
         has been paid off.
         """
         while self.continue_simulating:
+            should_liquidate = self.simulate_until >= self.liquidation_date and not self.in_liquidation
+            on_payment_date = self.simulate_until == self.next_payment_date
+            
+            # Liquidate the CLO if we are past the liquidation date.
+            if should_liquidate:
+                liquidation_date = self.simulate_until + relativedelta(days=14)
+                redemption_date = self.simulate_until + relativedelta(months=1)
+                self.liquidate(liquidation_date, redemption_date)
+
             self.portfolio.simulate(self.simulate_until)
             
             # Sweep accrued interest and principal paid from the portfolio.
@@ -187,12 +220,11 @@ class CLO:
                 tranche.simulate(self.simulate_until)
                 
             self.principal_reinvested = 0
-            # Reinvest if we are within the reinvestment period.
-            if self.simulate_until <= self.reinvestment_end_date:
+            if self.in_reinvestment_period:
                 self.principal_reinvested = self.reinvest()
             
             # Run the cashflow waterfall on payment dates.
-            if self.simulate_until == self.next_payment_date:
+            if on_payment_date:
                 # Only update the fees' balances on a payment month. Furthermore, their balances are set *before* 
                 # payments are run down the principal waterfall. This is an peculiarity with the purpose of 
                 # earning more fees for the CLO manager. 
@@ -230,8 +262,6 @@ class CLO:
             fee.notify_of_liquidation(liquidation_date)
 
         self.incentive_fee.notify_of_liquidation(liquidation_date)
-
-        self.simulate()
         
     def reinvest(self) -> float:
         """
@@ -286,7 +316,7 @@ class CLO:
         # maturity = self.calculate_reinvestment_maturity(balance, current_date)
         maturity = current_date + relativedelta(months=self.reinvestment_maturity_months)
 
-        return Asset(name, AssetKind.Loan, balance, price, spread, coupon, self.payment_frequency, 
+        return Asset(name, AssetKind.Loan, balance, price, price, spread, coupon, self.payment_frequency, 
             current_date, next_payment_date, maturity, cpr_lockout_end_date, cdr_lockout_end_date,
             self.cpr, self.cdr, self.recovery_rate, curve, is_floating_rate=True)
     

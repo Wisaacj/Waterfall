@@ -10,7 +10,7 @@ def add_clo_assumptions(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     parser.add_argument("--cpr_lockout_months", type=int, default=0, help="Number of months to lock out CPR (default: 0)")
     parser.add_argument("--cdr", type=float, default=0.01, help="Constant Default Rate (default: 0.01)")
     parser.add_argument("--cdr_lockout_months", type=int, default=0, help="Number of months to lock out CDR (default: 0)")
-    parser.add_argument("--recovery_rate", type=float, default=0.50, help="Recovery rate (default: 0.50)")
+    parser.add_argument("--recovery_rate", type=float, default=0.70, help="Recovery rate (default: 0.70)")
     parser.add_argument("--payment_frequency", type=int, default=4, help="Payment frequency (default: 4)")
     parser.add_argument("--simulation_frequency", type=int, default=12, help="Simulation frequency (default: 12)")
     parser.add_argument("--rp_extension_months", type=int, default=0, help="Reinvestment period extension in months (default: 0)")

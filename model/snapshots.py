@@ -39,6 +39,7 @@ class AssetSnapshot(Snapshot):
     period_accrual: float
     interest_accrued: float
     coupon: float
+    spread: float
     base_rate: float
     
     

@@ -77,9 +77,13 @@ class ResultsWriter:
     def _create_summary(self, grouped: pd.DataFrame):
         """Create a summary DataFrame with weighted average interest rate."""
         sum_cols = grouped.sum()
-        weighted_rate = grouped.apply(self._safe_weighted_average)
-        summary = sum_cols.drop('coupon', axis=1)
-        summary['coupon'] = weighted_rate
+        weighted_coupon = grouped.apply(lambda x: self._safe_weighted_average(x, 'coupon'))
+        weighted_spread = grouped.apply(lambda x: self._safe_weighted_average(x, 'spread'))
+        weighted_base_rate = grouped.apply(lambda x: self._safe_weighted_average(x, 'base_rate'))
+        summary = sum_cols.drop(['coupon', 'spread', 'base_rate'], axis=1)
+        summary['coupon'] = weighted_coupon
+        summary['spread'] = weighted_spread
+        summary['base_rate'] = weighted_base_rate
         return summary
 
     def _export_history_to_excel(self, snapshots: list[Snapshot], filename: str):
@@ -99,10 +103,10 @@ class ResultsWriter:
         return {field: getattr(snapshot, field) for field in snapshot.__dataclass_fields__}
 
     @staticmethod
-    def _safe_weighted_average(group):
+    def _safe_weighted_average(group: pd.DataFrame, column: str) -> float:
         """Calculate weighted average, handling zero-sum weights."""
         try:
-            return np.average(group['coupon'], weights=group['balance'])
+            return np.average(group[column], weights=group['balance'])
         except ZeroDivisionError:
             return 0
         

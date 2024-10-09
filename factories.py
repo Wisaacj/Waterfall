@@ -63,7 +63,7 @@ class CLOFactory:
         self.simulation_interval = relativedelta(months=(12/simulation_frequency))
         self.rp_extension_months = rp_extension_months
         self.reinvestment_maturity_months = reinvestment_maturity_months
-        
+
         # Important dates
         self.reinvestment_end_date = parser.parse(
             deal_data['reinvestment_enddate'], dayfirst=True).date() + relativedelta(months=rp_extension_months)
@@ -187,16 +187,6 @@ class AccountFactory:
         principal_balance = float(self.deal_data['collection_acc_principal_bal'])
         principal_account = Account(principal_balance)
         interest_account = Account(0)
-        
-        # FIXME: Remove these hard-coded values
-        # For SCULE7
-        # interest_account = Account(2710770.13)
-
-        # For JUBIL20
-        # interest_account = Account(3215276.35)
-
-        # For GRIFP
-        # interest_account = Account(1603112.56)
 
         return principal_account, interest_account
     
@@ -304,19 +294,28 @@ class PortfolioFactory:
         self.cdr_lockout_end_date = self.report_date + relativedelta(months=cdr_lockout_months)
 
     def build(self, forward_rate_curves: dict[str, ForwardRateCurve]) -> Portfolio:
-        assets = self.collateral_data.apply(
-            self.build_asset, axis=1, args=[forward_rate_curves]).tolist()
-        assets = [a for a in assets if a is not None]
-        return Portfolio(assets, forward_rate_curves)
+        try:
+            assets = self.collateral_data.apply(
+                self.build_asset, axis=1, args=[forward_rate_curves]).tolist()
+            assets = [a for a in assets if a is not None]
+            return Portfolio(assets, forward_rate_curves)
+        except Exception as e:
+            raise e
 
     def build_asset(self, asset_data: pd.Series, forward_rate_curves: dict[str, ForwardRateCurve]) -> Asset:
         figi = asset_data.get('bbg_id')
+        balance = float(asset_data.get('facevalue'))
+
+        if balance <= 0:
+            return None
+
         asset_kind = AssetKind.from_string(asset_data.get('type'))
         maturity_date = parser.parse(asset_data['maturitydate'], dayfirst=True).date()
         next_payment_date = parser.parse(asset_data['next_pay_date'], dayfirst=True).date()
         payment_frequency = int(asset_data.get('pay_freq'))
         is_floating_rate = asset_data.get('fix_or_float').lower() == 'float'
         price = float(asset_data.get('mark_value')) / 100
+        price_ovr = float(asset_data.get('mark_value_ovr')) / 100
 
         # Don't add matured assets to the portfolio
         if maturity_date <= self.report_date:
@@ -327,6 +326,7 @@ class PortfolioFactory:
         if not pd.notna(price):
             price = 1.0 # Default to 100%
 
+        # FIXME: Handle defaulted assets more gracefully
         # if asset_data.get('defaulted'):
         #     coupon = spread = 0.0 # Defaulted assets don't earn interest.
         # else:
@@ -339,8 +339,9 @@ class PortfolioFactory:
         return Asset(
             figi=figi,
             asset_kind=asset_kind,
-            balance=float(asset_data.get('facevalue')),
+            balance=balance,
             price=price,
+            price_ovr=price_ovr,
             spread=spread,
             initial_coupon=coupon,
             payment_frequency=payment_frequency,

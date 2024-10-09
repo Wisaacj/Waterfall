@@ -19,6 +19,7 @@ class Asset(InterestVehicle):
                  asset_kind: AssetKind,
                  balance: float, 
                  price: float, 
+                 price_ovr: float,
                  spread: float, 
                  initial_coupon: float,
                  payment_frequency: int,
@@ -56,6 +57,7 @@ class Asset(InterestVehicle):
 
         # Price, assumptions.
         self.price = price
+        self.price_ovr = price_ovr
         self.cpr = cpr
         self.cdr = cdr
         self.recovery_rate = recovery_rate
@@ -83,10 +85,7 @@ class Asset(InterestVehicle):
         self.recovered_principal = 0
         self.unscheduled_principal = 0
 
-        # Calculate the prior payment date
-        self.prior_payment_date = self.next_payment_date - self.payment_interval
-
-        # Calculate the initial accrued interest wtihout triggering a full simulation
+        # Calculate the initial accrued interest without triggering a full simulation
         initial_accrual = self.calc_backdated_accrued_interest()
         self.interest_accrued += initial_accrual
 
@@ -314,8 +313,20 @@ class Asset(InterestVehicle):
         """
         Calculates the interest accrued between the last payment date and the report date.
         """
-        year_factor = self.calc_year_factor(self.report_date, self.prior_payment_date)
+        year_factor = self.calc_year_factor(self.report_date, self.calc_prior_payment_date())
         return self.balance * year_factor * self.interest_rate
+    
+    def calc_prior_payment_date(self) -> date:
+        """
+        Calculates the prior payment date by subtracting the payment interval from the
+        next payment date until the prior payment date is before the report date.
+        """
+        prior_payment_date = self.next_payment_date - self.payment_interval
+
+        while prior_payment_date >= self.report_date:
+            prior_payment_date -= self.payment_interval
+
+        return prior_payment_date
 
     def take_snapshot(self, as_of: date) -> None:
         """
@@ -335,5 +346,6 @@ class Asset(InterestVehicle):
             period_accrual=self.period_accrual,
             recovered_principal=self.recovered_principal,
             coupon=self.interest_rate,
+            spread=self.spread,
             base_rate=self.base_rate,
         ))

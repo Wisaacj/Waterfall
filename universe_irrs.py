@@ -2,7 +2,6 @@ import argparse
 import data_source
 import common_args
 import pandas as pd
-import traceback
 
 from tqdm import tqdm
 from factories import CLOFactory
@@ -22,10 +21,9 @@ def universe_irrs(args: argparse.Namespace) -> pd.DataFrame:
             irrs[deal_id]["irr"] = irr
         except Exception as e:
             print(f"Error processing deal {deal_id}: {e}")
-            irrs[deal_id]["error"] = traceback.format_exc()
+            irrs[deal_id]["error"] = str(e)
 
     irrs_df = pd.DataFrame(irrs).T
-    print(irrs_df)
     
     # Print summary statistics.
     print(f"Mean IRR: {irrs_df['irr'].mean():.2%}")
@@ -50,8 +48,8 @@ def deal_irrs(deal_id: str, args: argparse.Namespace) -> float:
     factory = CLOFactory(
         deal, tranches, loans, forward_curves, args.cpr, args.cdr, 
         args.cpr_lockout_months, args.cdr_lockout_months, args.recovery_rate,
-        args.payment_frequency, args.simulation_frequency, args.reinvestment_asset_maturity_months,
-        args.rp_extension_months
+        args.payment_frequency, args.simulation_frequency, args.rp_extension_months,
+        args.reinvestment_maturity_months, args.wal_limit_years
     )
     model = factory.build()
     model.simulate()
@@ -68,8 +66,8 @@ def main():
     parser = common_args.add_clo_assumptions(parser)
     args = parser.parse_args()
 
-    universe_irrs(args)
-
+    irrs_df = universe_irrs(args)
+    irrs_df.to_excel("outputs/Universe IRRs.xlsx")
 
 if __name__ == "__main__":
     main()

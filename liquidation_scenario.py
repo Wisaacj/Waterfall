@@ -34,14 +34,15 @@ def main():
     factory = CLOFactory(
         deal, tranches, loans, forward_curves, args.cpr, args.cdr, 
         args.cpr_lockout_months, args.cdr_lockout_months, args.recovery_rate,
-        args.payment_frequency, args.simulation_frequency, args.reinvestment_asset_maturity_months,
-        args.rp_extension_months
+        args.payment_frequency, args.simulation_frequency, args.rp_extension_months,
+        args.reinvestment_maturity_months, args.wal_limit_years
     )
     model = factory.build()
     print("    > Model built")
 
     print(f"Running scenario: Selling portfolio on {accrual_date} and liquidating {deal_id} on {liquidation_date}...")
     model.liquidate(accrual_date, liquidation_date)
+    model.simulate()
     print("    > Scenario simulation complete")
     
     print(f"Writing results for {deal_id} to disk...")
