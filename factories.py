@@ -4,6 +4,7 @@ from pyxirr import DayCount
 from datetime import date
 from dateutil import parser
 from dateutil.relativedelta import relativedelta
+from clo_arg_parser import Arguments
 
 from model import (
     Account,
@@ -32,41 +33,32 @@ class CLOFactory:
             tranche_data: pd.DataFrame,
             collateral_data: pd.DataFrame,
             forward_curve_data: pd.DataFrame,
-            cpr: float,
-            cdr: float,
-            cpr_lockout_months: int,
-            cdr_lockout_months: int,
-            recovery_rate: float,
-            payment_frequency: int,
-            simulation_frequency: int,
-            rp_extension_months: int,
-            reinvestment_maturity_months: int,
-            assumed_wal_limit_years: int,
+            args: Arguments,
     ):
         self.report_date = date.today()
 
         # Factories
         self.tranche_factory = TrancheFactory(tranche_data, self.report_date)
         self.portfolio_factory = PortfolioFactory(collateral_data, self.report_date, 
-                                                  cpr, cdr, recovery_rate, 
-                                                  cpr_lockout_months, cdr_lockout_months)
+                                                  args.cpr, args.cdr, args.recovery_rate, 
+                                                  args.cpr_lockout_months, args.cdr_lockout_months)
         self.fee_factory = FeeFactory(deal_data, self.report_date)
         self.account_factory = AccountFactory(deal_data)
         self.forward_curve_factory = ForwardRateCurveFactory(forward_curve_data)
 
         # Assumptions
-        self.cpr = cpr
-        self.cdr = cdr
-        self.recovery_rate = recovery_rate
-        self.payment_frequency = payment_frequency
-        self.payment_interval = relativedelta(months=(12/payment_frequency))
-        self.simulation_interval = relativedelta(months=(12/simulation_frequency))
-        self.rp_extension_months = rp_extension_months
-        self.reinvestment_maturity_months = reinvestment_maturity_months
+        self.cpr = args.cpr
+        self.cdr = args.cdr
+        self.recovery_rate = args.recovery_rate
+        self.payment_frequency = args.payment_frequency
+        self.payment_interval = relativedelta(months=(12/args.payment_frequency))
+        self.simulation_interval = relativedelta(months=(12/args.simulation_frequency))
+        self.rp_extension_months = args.rp_extension_months
+        self.reinvestment_maturity_months = args.reinvestment_maturity_months
 
         # Important dates
         self.reinvestment_end_date = parser.parse(
-            deal_data['reinvestment_enddate'], dayfirst=True).date() + relativedelta(months=rp_extension_months)
+            deal_data['reinvestment_enddate'], dayfirst=True).date() + relativedelta(months=args.rp_extension_months)
         self.next_payment_date = parser.parse(
             deal_data['next_pay_date'], dayfirst=True).date()
         self.non_call_end_date = parser.parse(
@@ -76,7 +68,7 @@ class CLOFactory:
         if pd.notna(deal_data['wal_limit']):
             self.wal_limit_years = float(deal_data['wal_limit'])
         else:
-            self.wal_limit_years = assumed_wal_limit_years
+            self.wal_limit_years = args.wal_limit_years
 
     def build(self):
         forward_rate_curves = self.forward_curve_factory.build()
@@ -299,8 +291,8 @@ class PortfolioFactory:
                 self.build_asset, axis=1, args=[forward_rate_curves]).tolist()
             assets = [a for a in assets if a is not None]
             return Portfolio(assets, forward_rate_curves)
-        except Exception as e:
-            raise e
+        except Exception:
+            raise Exception(f"Failed to build portfolio, possibly because there is no collateral data for this deal. Please check in Loan-UK.csv.")
 
     def build_asset(self, asset_data: pd.Series, forward_rate_curves: dict[str, ForwardRateCurve]) -> Asset:
         figi = asset_data.get('bbg_id')

@@ -1,17 +1,14 @@
-import argparse
-import common_args
 import data_source
 
 from factories import CLOFactory
 from results_writer import ResultsWriter
+from clo_arg_parser import CLOArgumentParser
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Simulate CLO cashflows to maturity based on provided assumptions.")
-    parser.add_argument("--deal_id", required=True, type=str, help="The ID of the deal to simulate.")
-    parser = common_args.add_clo_assumptions(parser)
-    
-    args = parser.parse_args()
+    parser = CLOArgumentParser(description="Simulate CLO cashflows to maturity based on provided assumptions.")
+    parser.add_deal_id_argument()
+    args = parser.into()
     deal_id = args.deal_id.upper()
 
     print(f"\nLoading deal, tranche, & loan data for {deal_id} from disk...")
@@ -23,12 +20,7 @@ def main():
     print(f"    > Loaded rate curves")
 
     print(f"Building a model of {deal_id}...")
-    factory = CLOFactory(
-        deal, tranches, loans, forward_curves, args.cpr, args.cdr, 
-        args.cpr_lockout_months, args.cdr_lockout_months, args.recovery_rate,
-        args.payment_frequency, args.simulation_frequency, args.rp_extension_months,
-        args.reinvestment_maturity_months, args.wal_limit_years
-    )
+    factory = CLOFactory(deal, tranches, loans, forward_curves, args)
     model = factory.build()
     print("    > Model built")
 
@@ -42,6 +34,7 @@ def main():
         writer.include_assets()
     path = writer.include_tranches().write()
     print(f"    > Results written to '{path}'\n")
+
 
 if __name__ == "__main__":
     main()
