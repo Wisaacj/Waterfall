@@ -33,6 +33,31 @@ def add_uk_business_days(start: date, days: int) -> date:
     return current_date.date()
 
 
+def sub_uk_business_days(start: date, days: int) -> date:
+    """
+    Subtracts the specified number of UK business days from the given start date.
+
+    :param start: The start date.
+    :param days: The number of business days to subtract.
+    :return: The date after subtracting the specified number of business days.
+    """
+    business_days = rrule(
+        DAILY,
+        dtstart=start-relativedelta(days=days*2),
+        byweekday=(MO, TU, WE, TH, FR),
+    )
+
+    current_date = datetime.combine(start, datetime.min.time())
+    days_subtracted = 0
+
+    while days_subtracted < days:
+        current_date = business_days.before(current_date)
+        if not BANK_HOLIDAYS.is_holiday(current_date):
+            days_subtracted += 1
+
+    return current_date.date()
+
+
 def safely_set_day(dt: date, day: int) -> date:
     """
     Safely sets the day of the month for a given date.

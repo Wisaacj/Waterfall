@@ -17,13 +17,20 @@ class Snapshot:
 @dataclass
 class CLOSnapshot(Snapshot):
     """Represents a snapshot of a CLO."""
-    total_debt_tranches_balance: float = 0
-    total_asset_balance: float = 0
+    total_debt: float = 0
+    total_asset_par: float = 0
+    interest_accrued: float = 0
     interest_swept: float = 0
     interest_account_balance: float = 0
     principal_swept: float = 0
     principal_account_balance: float = 0
     principal_reinvested: float = 0
+    weighted_average_spread: float = 0
+    weighted_average_coupon: float = 0
+    weighted_average_price: float = 0
+    weighted_average_life: float = 0
+    nav: float = 0
+    nav_90: float = 0
 
     
 @dataclass
@@ -41,7 +48,8 @@ class AssetSnapshot(Snapshot):
     coupon: float
     spread: float
     base_rate: float
-    
+    price: float
+
     
 @dataclass
 class TrancheSnapshot(Snapshot):

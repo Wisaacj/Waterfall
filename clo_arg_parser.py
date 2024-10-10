@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
 from datetime import date
+from model.enums import LiquidationType
 
 
 @dataclass
@@ -20,7 +21,7 @@ class Arguments:
     wal_limit_years: float
     output_path: Path
     output_asset_cashflows: bool
-    verbosity: int
+    liquidation_type: LiquidationType
     deal_id: Optional[str] = None
     accrual_date: Optional[date] = None
     liquidation_date: Optional[date] = None
@@ -39,7 +40,7 @@ class CLOArgumentParser(argparse.ArgumentParser):
 
     def _add_clo_arguments(self):
         self.add_argument("--cpr", type=float, default=0.20, help="Constant Prepayment Rate (default: 0.20)")
-        self.add_argument("--cdr", type=float, default=0.01, help="Constant Default Rate (default: 0.01)")
+        self.add_argument("--cdr", type=float, default=0.02, help="Constant Default Rate (default: 0.02)")
         self.add_argument("--cpr_lockout_months", type=int, default=0, help="Number of months to lock out CPR (default: 0)")
         self.add_argument("--cdr_lockout_months", type=int, default=0, help="Number of months to lock out CDR (default: 0)")
         self.add_argument("--recovery_rate", type=float, default=0.70, help="Recovery rate (default: 0.70)")
@@ -50,4 +51,4 @@ class CLOArgumentParser(argparse.ArgumentParser):
         self.add_argument("--wal_limit_years", type=int, default=6, help="WAL limit in years (default: 6)")
         self.add_argument("--output_path", type=Path, default=Path("outputs"), help="Path to save the output files (default: ./outputs)")
         self.add_argument("--output_asset_cashflows", type=bool, default=True, help="Output asset cashflows to CSV (default: True)")
-        self.add_argument("--verbosity", type=int, default=0, help="Verbosity level (0: silent, 1: verbose)")
+        self.add_argument("--liquidation_type", type=LiquidationType, choices=list(LiquidationType), default=LiquidationType.MARKET, help="Type of liquidation pricing to use (default: MARKET)")

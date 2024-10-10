@@ -4,6 +4,7 @@ from datetime import date
 from .asset import Asset
 from .account import Account
 from .forward_rate_curve import ForwardRateCurve
+from .enums import LiquidationType
 from pyxirr import DayCount
 
 
@@ -43,14 +44,19 @@ class Portfolio:
                 
         self.last_simulation_date = simulate_until
 
-    def liquidate(self, accrual_date: date):
+    def liquidate(self, accrual_date: date, liquidation_type: LiquidationType):
         """
         Liquidates the entire portfolio of assets on the accrual date.
-
-        Note that this doesn't handle principal proceeds yet.
         """
         for asset in self.assets:
-            asset.liquidate(accrual_date)
+            asset.liquidate(accrual_date, liquidation_type)
+
+    def backdate(self, cutoff_date: date):
+        """
+        Backdates the portfolio to the cutoff date.
+        """
+        for asset in self.assets:
+            asset.backdate(cutoff_date)
 
     @property
     def total_interest_accrued(self):
@@ -122,7 +128,7 @@ class Portfolio:
             return 0
     
     @property
-    def total_clean_market_value(self) -> float:
+    def market_value(self) -> float:
         """
         Returns the clean market value of the portfolio of assets, where clean means that
         an asset's accrued and paid interest are not included in the sum.
@@ -130,7 +136,16 @@ class Portfolio:
         return sum((asset.price * asset.balance) + asset.principal_paid for asset in self.assets)
     
     @property
-    def total_dirty_market_value(self) -> float:
+    def market_value_90(self) -> float:
+        """
+        Returns the market value of the portfolio of assets, where the price is 1.00 for
+        assets with a price greater than or equal to 0.9, and the price is unchanged for
+        assets with a price less than 0.9.
+        """
+        return sum((1.0 if asset.price >= 0.9 else asset.price) * asset.balance for asset in self.assets)
+
+    @property
+    def dirty_market_value(self) -> float:
         """
         Returns the dirty market value of the portfolio of assets, where dirty means that an
         asset's accrued and paid interest are included in the sum.

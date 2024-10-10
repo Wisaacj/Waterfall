@@ -12,10 +12,10 @@ class WaterfallItem(Enum):
     BB = "BB"
     B = "B"
     Equity = "Equity"
-    SeniorExpensesFee = "SeniorExpensesFee"
-    SeniorMgmtFee = "SeniorMgmtFee"
-    JuniorMgmtFee = "JuniorMgmtFee"
-    IncentiveFee = "IncentiveFee"
+    SeniorExpensesFee = "Senior Expenses Fee"
+    SeniorMgmtFee = "Senior Mgmt Fee"
+    JuniorMgmtFee = "Junior Mgmt Fee"
+    IncentiveFee = "Incentive Fee"
 
 
 class PaymentSource(Enum):
@@ -33,14 +33,15 @@ class AssetKind(Enum):
     Loan = "loan"
     Bond = "bond"
 
+    def __str__(self) -> str:
+        return self.value
+
     @classmethod
     def from_string(cls, value: str) -> "AssetKind":
-        if value.lower() == "loan":
-            return cls.Loan
-        elif value.lower() == "bond":
-            return cls.Bond
-        else:
-            raise ValueError(f"Invalid asset kind: {value}")
+        try:
+            return AssetKind(value.lower())
+        except ValueError:
+            raise ValueError(f"'{value}' is not a valid AssetKind")
 
 
 class AssetType(Enum):
@@ -49,3 +50,22 @@ class AssetType(Enum):
     """
     FloatingRate = "floating"
     FixedRate = "fixed"
+
+
+class LiquidationType(Enum):
+    """
+    Enumerates the possible types of liquidation.
+    """
+    MARKET = "market"
+    NAV90 = "nav90"
+    OVERRIDE = "override"
+
+    def __str__(self) -> str:
+        return self.value
+
+    @classmethod
+    def from_string(cls, value: str) -> "LiquidationType":
+        try:
+            return LiquidationType(value.lower())
+        except ValueError:
+            raise ValueError(f"'{value}' is not a valid LiquidationType")

@@ -37,6 +37,7 @@ class CLO:
         recovery_rate: float,
         reinvestment_maturity_months: int,
         wal_limit_years: int,
+        liquidation_type: LiquidationType,
     ):
         """
         Instantiates a CLO.
@@ -92,14 +93,8 @@ class CLO:
         self.cdr = cdr
         self.recovery_rate = recovery_rate
         
-        # A history of snapshots.
-        self.history = []
-        # Take a snapshot of the CLO before simulating.
-        self.take_snapshot()
-        
         self.next_payment_date = next_payment_date
         self.payment_day = next_payment_date.day
-        self.calc_first_simulation_date(report_date)
 
         self.non_call_end_date = non_call_end_date
         self.reinvestment_end_date = reinvestment_end_date
@@ -108,6 +103,7 @@ class CLO:
         self.payment_interval = relativedelta(months=(12/payment_frequency))
 
         self.in_liquidation = False
+        self.liquidation_type = liquidation_type
         # Determine the liquidation date of the CLO according to Timo's instructions.
         if self.report_date <= self.reinvestment_end_date:
             # Inside the reinvestment period.
@@ -121,15 +117,28 @@ class CLO:
         
         # We need to backdate all tranche and fee accruals from the last payment date to the report date.
         # We do this by initialising the prior_payment_date of the tranches and fees to the prior payment date.
-        prior_payment_date = self.next_payment_date - self.payment_interval
+        self.prior_payment_date = self.next_payment_date - self.payment_interval
+        self.cutoff_date = day_counter.sub_uk_business_days(self.prior_payment_date, 8)
         
         for tranche in self.tranches:
-            tranche.last_simulation_date = prior_payment_date
+            tranche.last_simulation_date = self.prior_payment_date
         
         # Give the fees their initial balances 
         for fee in self.fees:
-            fee.last_simulation_date = prior_payment_date
-            fee.balance = self.aggregate_collateral_balance 
+            fee.last_simulation_date = self.prior_payment_date
+            fee.balance = self.aggregate_collateral_balance
+
+        self.portfolio.backdate(self.cutoff_date)
+        self.portfolio.simulate(self.report_date)
+
+        self.interest_swept = self.portfolio.sweep_interest(self.interest_account)
+        self.principal_swept = self.portfolio.sweep_principal(self.principal_account)
+
+        # A history of snapshots.
+        self.history = []
+        # Take a snapshot of the CLO before simulating.
+        self.take_snapshot()
+        self.calc_first_simulation_date(report_date)
             
     def __str__(self):
         """
@@ -204,7 +213,7 @@ class CLO:
             if should_liquidate:
                 liquidation_date = self.simulate_until + relativedelta(days=14)
                 redemption_date = self.simulate_until + relativedelta(months=1)
-                self.liquidate(liquidation_date, redemption_date)
+                self.liquidate(liquidation_date, redemption_date, self.liquidation_type)
 
             self.portfolio.simulate(self.simulate_until)
             
@@ -249,11 +258,11 @@ class CLO:
             self.simulate_until = self.simulate_until + relativedelta(months=1)
             self.simulate_until = day_counter.safely_set_day(self.simulate_until, self.payment_day)
 
-    def liquidate(self, accrual_date: date, liquidation_date: date):
+    def liquidate(self, accrual_date: date, liquidation_date: date, liquidation_type: LiquidationType):
         self.in_liquidation = True
         self.liquidation_date = liquidation_date
 
-        self.portfolio.liquidate(accrual_date)
+        self.portfolio.liquidate(accrual_date, liquidation_type)
 
         for tranche in self.tranches:
             tranche.notify_of_liquidation(liquidation_date)
@@ -377,12 +386,19 @@ class CLO:
         Takes a snapshot of the CLO's attributes. test comment
         """
         self.history.append(CLOSnapshot(
-            interest_swept                   = self.interest_swept,
-            principal_swept                  = self.principal_swept,
             date                            = self.simulate_until,
+            interest_swept                   = self.interest_swept,
+            interest_accrued                  = self.portfolio.total_interest_accrued,
+            principal_swept                  = self.principal_swept,
             principal_reinvested             = self.principal_reinvested,
             interest_account_balance          = self.interest_account.balance,
             principal_account_balance         = self.principal_account.balance,
-            total_debt_tranches_balance        = self.total_debt,
-            total_asset_balance               = self.portfolio.total_asset_balance,
+            total_debt                      = self.total_debt,
+            total_asset_par               = self.portfolio.total_asset_balance,
+            weighted_average_spread        = self.portfolio.weighted_average_spread,
+            weighted_average_coupon        = self.portfolio.weighted_average_coupon,
+            weighted_average_price         = self.portfolio.weighted_average_price,
+            weighted_average_life          = self.portfolio.weighted_average_life,
+            nav                            = (self.principal_account.balance + self.portfolio.market_value - self.total_debt) / self.equity_tranche.balance,
+            nav_90                         = (self.principal_account.balance + self.portfolio.market_value_90 - self.total_debt) / self.equity_tranche.balance,
         ))

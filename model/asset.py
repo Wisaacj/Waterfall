@@ -6,7 +6,7 @@ from .account import Account
 from .interest_vehicle import InterestVehicle
 from .snapshots import AssetSnapshot
 from .forward_rate_curve import ForwardRateCurve
-from .enums import AssetKind
+from .enums import AssetKind, LiquidationType
 
 
 class Asset(InterestVehicle):
@@ -42,6 +42,7 @@ class Asset(InterestVehicle):
         :param spread: the spread paid on the asset over the base rate
         :param payment_frequency: the number of times the asset pays per year.
         :param report_date: the date the deal report was generated on.
+        :param cutoff_date: the date the simulation will be run from.
         :param next_payment_date: the next date the asset will pay.
         :param maturity_date: the date the asset matures
         """
@@ -85,10 +86,6 @@ class Asset(InterestVehicle):
         self.recovered_principal = 0
         self.unscheduled_principal = 0
 
-        # Calculate the initial accrued interest without triggering a full simulation
-        initial_accrual = self.calc_backdated_accrued_interest()
-        self.interest_accrued += initial_accrual
-
         # Take an intitial snapshot.
         self.take_snapshot(self.report_date)
 
@@ -97,7 +94,7 @@ class Asset(InterestVehicle):
         Returns this asset's Bloomberg ID.
         """
         return self.figi
-
+    
     def simulate(self, simulate_until: date):
         """
         Runs a simulation on the asset over the given number of months and computes the new cash flows for the period.
@@ -110,7 +107,7 @@ class Asset(InterestVehicle):
         # If there is a payment date before the end of the simulation, we will instead simulate until that date
         # and then remove all money before proceeding with the following simulation period.
         while (simulate_until > self.next_payment_date or simulate_until > self.maturity):
-            interim_date = self.next_payment_date if self.next_payment_date <= self.maturity else self.maturity
+            interim_date = interim_date = min(self.next_payment_date, self.maturity)
 
             # Simulate until the interim date.
             self.simulating_interim_period = True
@@ -154,7 +151,7 @@ class Asset(InterestVehicle):
         # 3) For remaining balances:
         self.balance -= prepayments + defaults
 
-        on_payment_date = simulate_until == self.next_payment_date # TODO: simulate_until >= self.next_payment_date + 8 business days
+        on_payment_date = simulate_until == self.next_payment_date
         asset_matured = simulate_until >= self.maturity
         asset_settled = simulate_until >= self.settlement_date
 
@@ -165,7 +162,7 @@ class Asset(InterestVehicle):
             self.interest_accrued = 0
 
             # Fix coupon for the next accrual period.
-            self.update_coupon(simulate_until)# + relativedelta(months=1))
+            self.update_coupon(simulate_until) # + relativedelta(months=1))
 
             # Bump the next payment date forward by the payment interval.
             self.next_payment_date += self.payment_interval
@@ -244,12 +241,13 @@ class Asset(InterestVehicle):
         else:
             return 0
 
-    def liquidate(self, accrual_date: date):
+    def liquidate(self, accrual_date: date, liquidation_type: LiquidationType):
         """
         Liquidates the asset by trading it in the market on the accrual date. The 
         settlement date then depends on the asset kind.
 
         :param accrual_date: The date of the accrual.
+        :param liquidation_type: The type of liquidation pricing to use.
         """
         if self.asset_kind == AssetKind.Loan:
             # Loans trade with delayed comp (T+10). That is, they continue to earn
@@ -263,6 +261,16 @@ class Asset(InterestVehicle):
                 accrual_date, 2)
         else:
             raise ValueError(f"invalid asset kind: {self.asset_kind}")
+        
+        # Determine the sale price based on the liquidation type.
+        if liquidation_type == LiquidationType.MARKET:
+            self.price = self.price
+        elif liquidation_type == LiquidationType.NAV90:
+            self.price = 1.0 if (1.0 > self.price > 0.9) else self.price
+        elif liquidation_type == LiquidationType.OVERRIDE:
+            self.price = self.price_ovr
+        else:
+            raise ValueError(f"invalid liquidation type: {liquidation_type}")
     
     def update_coupon(self, fixing_date: date):
         """
@@ -309,24 +317,27 @@ class Asset(InterestVehicle):
 
         return amount
     
-    def calc_backdated_accrued_interest(self) -> float:
+    def backdate(self, cutoff_date: date):
         """
-        Calculates the interest accrued between the last payment date and the report date.
+        Backdates the asset to the cutoff date. We simulate from the cutoff to this date
+        to calculate the interest accrued and paid between the cutoff date and the report date.
         """
-        year_factor = self.calc_year_factor(self.report_date, self.calc_prior_payment_date())
-        return self.balance * year_factor * self.interest_rate
+        self.next_payment_date = self.calc_first_payment_date(cutoff_date)
+        self.last_simulation_date = self.next_payment_date - self.payment_interval
     
-    def calc_prior_payment_date(self) -> date:
+    def calc_first_payment_date(self, cutoff_date: date) -> date:
         """
-        Calculates the prior payment date by subtracting the payment interval from the
-        next payment date until the prior payment date is before the report date.
+        Calculates the first payment date after the cutoff_date.
         """
-        prior_payment_date = self.next_payment_date - self.payment_interval
+        first_payment_date = self.next_payment_date
 
-        while prior_payment_date >= self.report_date:
-            prior_payment_date -= self.payment_interval
+        while first_payment_date > cutoff_date:
+            first_payment_date -= self.payment_interval
 
-        return prior_payment_date
+        # We are now at the first payment date before the cutoff date. We want the first after.
+        first_payment_date += self.payment_interval
+
+        return first_payment_date
 
     def take_snapshot(self, as_of: date) -> None:
         """
@@ -348,4 +359,5 @@ class Asset(InterestVehicle):
             coupon=self.interest_rate,
             spread=self.spread,
             base_rate=self.base_rate,
+            price=self.price,
         ))

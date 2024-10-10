@@ -51,7 +51,7 @@ def deal_irrs(deal_id: str, args: Arguments) -> float:
     model.simulate()
 
     equity_holdings = deal_holdings[deal_holdings['orig_rtg'] == 'Equity']
-    equity_purchase_price = equity_holdings['costprice'].mean() / 100
+    equity_purchase_price = equity_holdings['localprice'].mean() / 100
     equity_irr = model.equity_tranche.irr(equity_purchase_price)
 
     return equity_irr

@@ -55,6 +55,7 @@ class CLOFactory:
         self.simulation_interval = relativedelta(months=(12/args.simulation_frequency))
         self.rp_extension_months = args.rp_extension_months
         self.reinvestment_maturity_months = args.reinvestment_maturity_months
+        self.liquidation_type = args.liquidation_type
 
         # Important dates
         self.reinvestment_end_date = parser.parse(
@@ -102,6 +103,7 @@ class CLOFactory:
             recovery_rate=self.recovery_rate,
             reinvestment_maturity_months=self.reinvestment_maturity_months,
             wal_limit_years=self.wal_limit_years,
+            liquidation_type=self.liquidation_type,
         )
 
 
@@ -160,7 +162,6 @@ class ForwardRateCurveFactory:
         dates = pd.to_datetime(self.data['reporting_date']).dt.date.tolist()
 
         for curve_name in curve_names:
-            # Create a ForwardRateCurve for the current curve
             rates = (self.data[curve_name] / 100).tolist()
             forward_curves[curve_name] = ForwardRateCurve(dates, rates)
 
@@ -201,7 +202,7 @@ class TrancheFactory:
             balance = float(item['cur_balance'])
             coupon = float(item['coupon']) / 100
             margin = float(item['margin']) / 100
-            is_fixed_rate = 'fix' in item['tranche_type']
+            is_fixed_rate = 'fix' in item['tranche_type'].lower()
 
             if is_fixed_rate:
                 day_count = DayCount.THIRTY_360_ISDA
@@ -211,8 +212,7 @@ class TrancheFactory:
             if rating == 'Equity' or rating == 'EQTY':
                 # There may be "residual" equity tranches in the deal from
                 # before a reissue/reset/refi.
-                balance += equity_tranche.balance
-                equity_tranche = EquityTranche(balance, self.report_date)
+                equity_tranche.balance += balance
             else:
                 tranche = Tranche(rating, balance, margin, coupon, self.report_date,
                                    is_fixed_rate, euribor_3mo, day_count)
@@ -223,6 +223,18 @@ class TrancheFactory:
             debt_tranches,
             key=lambda inv: sort_order.index(inv.rating)
         )
+
+        # Remove tranches that have fully amortised
+        sorted_tranches = [tranche for tranche in sorted_tranches if tranche.balance > 0]
+
+        # Add suffixes to tranches with the same rating
+        rating_counts = {}
+        for i, tranche in enumerate(sorted_tranches):
+            if tranche.rating in rating_counts:
+                rating_counts[tranche.rating] += 1
+                sorted_tranches[i].rating = f"{tranche.rating}{rating_counts[tranche.rating]}"
+            else:
+                rating_counts[tranche.rating] = 1
 
         return sorted_tranches, equity_tranche
 
@@ -237,9 +249,8 @@ class FeeFactory:
         self.report_date = report_date
 
     def build(self):
-        # FIXME don't use hard-coded values
-        senior_expenses_fixed_fee = 0 # 300_000 
-        senior_expenses_variable_fee = 0 # 0.000225
+        senior_expenses_fixed_fee = 300_000 
+        senior_expenses_variable_fee = 0.000225
 
         senior_management_fee = float(self.deal_data['deal_sen_mgt_fees']) / 100
         junior_management_fee = float(self.deal_data['deal_sub_mgt_fees']) / 100
@@ -292,7 +303,7 @@ class PortfolioFactory:
             assets = [a for a in assets if a is not None]
             return Portfolio(assets, forward_rate_curves)
         except Exception:
-            raise Exception(f"Failed to build portfolio, possibly because there is no collateral data for this deal. Please check in Loan-UK.csv.")
+            raise Exception(f"Failed to build portfolio, possibly because there is no collateral data for this deal. Please check 'Loan-UK.csv'.")
 
     def build_asset(self, asset_data: pd.Series, forward_rate_curves: dict[str, ForwardRateCurve]) -> Asset:
         figi = asset_data.get('bbg_id')
@@ -316,7 +327,7 @@ class PortfolioFactory:
         if not pd.notna(figi):
             figi = asset_data.get('loanxid')
         if not pd.notna(price):
-            price = 1.0 # Default to 100%
+            price = 1.0 # Default price is 100%
 
         # FIXME: Handle defaulted assets more gracefully
         # if asset_data.get('defaulted'):

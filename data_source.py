@@ -13,9 +13,9 @@ from sqlalchemy import Engine
 
 # CSV Files
 DATA_DIR = Path("data")
-LOANS_CSV = DATA_DIR / "Loan-UK-2024-09-30.csv"
-DEALS_CSV = DATA_DIR / "Deal-UK-2024-10-04.csv"
-TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-10-04.csv"
+LOANS_CSV = DATA_DIR / "Loan-UK-2024-10-07.csv"
+DEALS_CSV = DATA_DIR / "Deal-UK-2024-10-09.csv"
+TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-10-09.csv"
 REPO_REPORT_XLSX = DATA_DIR / "RepoLight - 23-09-2024.xlsx"
 
 # DB Connections

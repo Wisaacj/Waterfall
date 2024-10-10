@@ -32,7 +32,7 @@ def main():
     writer = ResultsWriter(model, deal_id, args.output_path)
     if args.output_asset_cashflows:
         writer.include_assets()
-    path = writer.include_tranches().write()
+    path = writer.include_all_liabilities().write()
     print(f"    > Results written to '{path}'\n")
 
 

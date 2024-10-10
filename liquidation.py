@@ -31,7 +31,7 @@ def main():
     print("    > Model built")
 
     print(f"Running scenario: Selling portfolio on {accrual_date} and liquidating {deal_id} on {liquidation_date}...")
-    model.liquidate(accrual_date, liquidation_date)
+    model.liquidate(accrual_date, liquidation_date, args.liquidation_type)
     model.simulate()
     print("    > Scenario simulation complete")
     
