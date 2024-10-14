@@ -1,3 +1,6 @@
+import pyxirr
+
+from pyxirr import DayCount
 from datetime import date
 from dateutil.relativedelta import relativedelta
 
@@ -38,6 +41,7 @@ class CLO:
         reinvestment_maturity_months: int,
         wal_limit_years: int,
         liquidation_type: LiquidationType,
+        use_top_down_defaults: bool,
     ):
         """
         Instantiates a CLO.
@@ -92,7 +96,8 @@ class CLO:
         self.cpr = cpr
         self.cdr = cdr
         self.recovery_rate = recovery_rate
-        
+        self.use_top_down_defaults = use_top_down_defaults
+
         self.next_payment_date = next_payment_date
         self.payment_day = next_payment_date.day
 
@@ -104,7 +109,7 @@ class CLO:
 
         self.in_liquidation = False
         self.liquidation_type = liquidation_type
-        # Determine the liquidation date of the CLO according to Timo's instructions.
+        # Determine the liquidation date according to Timo's instructions.
         if self.report_date <= self.reinvestment_end_date:
             # Inside the reinvestment period.
             self.liquidation_date = self.reinvestment_end_date + relativedelta(years=2)
@@ -139,12 +144,6 @@ class CLO:
         # Take a snapshot of the CLO before simulating.
         self.take_snapshot()
         self.calc_first_simulation_date(report_date)
-            
-    def __str__(self):
-        """
-        Returns a string representation of the CLO.
-        """
-        return 'CLO'
     
     @property
     def debt_tranches(self) -> list[Tranche]:
@@ -239,6 +238,13 @@ class CLO:
                 # earning more fees for the CLO manager. 
                 for fee in self.fees:
                     fee.balance = self.aggregate_collateral_balance
+
+                # When using top-down defaults, we delay the calculation of defaults until the liquidation date.
+                if self.use_top_down_defaults and self.in_liquidation:
+                    year_factor = pyxirr.year_fraction(self.report_date, self.liquidation_date, DayCount.ACT_360)
+                    defaulted_assets = self.history[0].total_asset_par * self.cdr * year_factor
+                    unrecovered_assets = defaulted_assets * (1 - self.recovery_rate)
+                    self.principal_account.request_debit(unrecovered_assets)
                 
                 # Run the payments down the cashflow waterfalls.
                 self.interest_waterfall.pay(self.interest_account, PaymentSource.Interest)

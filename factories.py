@@ -41,7 +41,8 @@ class CLOFactory:
         self.tranche_factory = TrancheFactory(tranche_data, self.report_date)
         self.portfolio_factory = PortfolioFactory(collateral_data, self.report_date, 
                                                   args.cpr, args.cdr, args.recovery_rate, 
-                                                  args.cpr_lockout_months, args.cdr_lockout_months)
+                                                  args.cpr_lockout_months, args.cdr_lockout_months,
+                                                  args.use_top_down_defaults)
         self.fee_factory = FeeFactory(deal_data, self.report_date)
         self.account_factory = AccountFactory(deal_data)
         self.forward_curve_factory = ForwardRateCurveFactory(forward_curve_data)
@@ -56,6 +57,7 @@ class CLOFactory:
         self.rp_extension_months = args.rp_extension_months
         self.reinvestment_maturity_months = args.reinvestment_maturity_months
         self.liquidation_type = args.liquidation_type
+        self.use_top_down_defaults = args.use_top_down_defaults
 
         # Important dates
         self.reinvestment_end_date = parser.parse(
@@ -104,6 +106,7 @@ class CLOFactory:
             reinvestment_maturity_months=self.reinvestment_maturity_months,
             wal_limit_years=self.wal_limit_years,
             liquidation_type=self.liquidation_type,
+            use_top_down_defaults=self.use_top_down_defaults,
         )
 
 
@@ -212,7 +215,8 @@ class TrancheFactory:
             if rating == 'Equity' or rating == 'EQTY':
                 # There may be "residual" equity tranches in the deal from
                 # before a reissue/reset/refi.
-                equity_tranche.balance += balance
+                balance += equity_tranche.balance
+                equity_tranche = EquityTranche(balance, self.report_date)
             else:
                 tranche = Tranche(rating, balance, margin, coupon, self.report_date,
                                    is_fixed_rate, euribor_3mo, day_count)
@@ -286,15 +290,19 @@ class PortfolioFactory:
                  recovery_rate: float, 
                  cpr_lockout_months: int,
                  cdr_lockout_months: int,
-                 forward_rate_curves: dict[str, ForwardRateCurve] = None):
+                 use_top_down_defaults: bool):
         self.collateral_data = collateral_data
         self.report_date = report_date
         self.cpr = cpr
         self.cdr = cdr
         self.recovery_rate = recovery_rate
-        self.forward_rate_curves = forward_rate_curves
         self.cpr_lockout_end_date = self.report_date + relativedelta(months=cpr_lockout_months)
-        self.cdr_lockout_end_date = self.report_date + relativedelta(months=cdr_lockout_months)
+
+        if use_top_down_defaults:
+            # When using top-down defaults, we delay the calculation of defaults until the liquidation date.
+            self.cdr_lockout_end_date = date(9999, 12, 31)
+        else:
+            self.cdr_lockout_end_date = self.report_date + relativedelta(months=cdr_lockout_months)
 
     def build(self, forward_rate_curves: dict[str, ForwardRateCurve]) -> Portfolio:
         try:
@@ -302,7 +310,7 @@ class PortfolioFactory:
                 self.build_asset, axis=1, args=[forward_rate_curves]).tolist()
             assets = [a for a in assets if a is not None]
             return Portfolio(assets, forward_rate_curves)
-        except Exception:
+        except Exception as e:
             raise Exception(f"Failed to build portfolio, possibly because there is no collateral data for this deal. Please check 'Loan-UK.csv'.")
 
     def build_asset(self, asset_data: pd.Series, forward_rate_curves: dict[str, ForwardRateCurve]) -> Asset:

@@ -2,6 +2,7 @@ import data_source
 import pandas as pd
 
 from tqdm import tqdm
+from datetime import date
 from factories import CLOFactory
 from clo_arg_parser import CLOArgumentParser, Arguments
 
@@ -18,8 +19,9 @@ def universe_irrs(args: Arguments) -> pd.DataFrame:
     for deal_id in tqdm(napier_holdings["intex_id"].unique(), desc="Processing deals"):
         irrs[deal_id] = {}
         try:
-            irr = deal_irrs(deal_id, args)
+            irr, rp_end_date = deal_irrs(deal_id, args)
             irrs[deal_id]["irr"] = irr
+            irrs[deal_id]["rp_end_date"] = rp_end_date
         except Exception as e:
             print(f"Error processing deal {deal_id}: {e}")
             irrs[deal_id]["error"] = str(e)
@@ -41,7 +43,7 @@ def universe_irrs(args: Arguments) -> pd.DataFrame:
     return irrs_df
 
 
-def deal_irrs(deal_id: str, args: Arguments) -> float:
+def deal_irrs(deal_id: str, args: Arguments) -> tuple[float, date]:
     deal, loans, tranches = data_source.load_deal(deal_id)
     deal_holdings = data_source.load_deal_holdings(deal_id)
     forward_curves = data_source.load_latest_forward_curves()
@@ -54,14 +56,16 @@ def deal_irrs(deal_id: str, args: Arguments) -> float:
     equity_purchase_price = equity_holdings['localprice'].mean() / 100
     equity_irr = model.equity_tranche.irr(equity_purchase_price)
 
-    return equity_irr
+    return equity_irr, model.reinvestment_end_date
 
 
 def main():
     parser = CLOArgumentParser(description="Simulate the IRRs of a universe of deals.")
     args = parser.into()
+    print(vars(args))
 
     irrs_df = universe_irrs(args)
+    irrs_df = data_source.tidy_dataframe(irrs_df)
     irrs_df.to_excel("outputs/Universe IRRs.xlsx")
 
 

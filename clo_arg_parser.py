@@ -22,6 +22,7 @@ class Arguments:
     output_path: Path
     output_asset_cashflows: bool
     liquidation_type: LiquidationType
+    use_top_down_defaults: bool
     deal_id: Optional[str] = None
     accrual_date: Optional[date] = None
     liquidation_date: Optional[date] = None
@@ -51,4 +52,5 @@ class CLOArgumentParser(argparse.ArgumentParser):
         self.add_argument("--wal_limit_years", type=int, default=6, help="WAL limit in years (default: 6)")
         self.add_argument("--output_path", type=Path, default=Path("outputs"), help="Path to save the output files (default: ./outputs)")
         self.add_argument("--output_asset_cashflows", type=bool, default=True, help="Output asset cashflows to CSV (default: True)")
-        self.add_argument("--liquidation_type", type=LiquidationType, choices=list(LiquidationType), default=LiquidationType.MARKET, help="Type of liquidation pricing to use (default: MARKET)")
+        self.add_argument("--liquidation_type", type=LiquidationType, choices=list(LiquidationType), default=LiquidationType.NAV90, help="Type of liquidation pricing to use (default: NAV)")
+        self.add_argument("--use_top_down_defaults", action="store_true", help="Use top-down defaults (default: False)")

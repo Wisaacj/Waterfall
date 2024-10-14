@@ -36,9 +36,6 @@ class Portfolio:
         
         :param simulate_until: as the name suggests.
         """
-        # if simulate_until == self.last_simulation_date:
-        #     raise Exception("debug this or I will shank you")
-        
         for asset in self.assets:
             asset.simulate(simulate_until)
                 
