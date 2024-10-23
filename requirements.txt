@@ -5,3 +5,5 @@ pyxirr
 python-decouple
 sqlalchemy
 pyodbc
+cx-Oracle
+pymysql
