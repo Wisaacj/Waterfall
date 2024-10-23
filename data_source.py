@@ -1,4 +1,3 @@
-import re
 import utils
 import warnings
 import functools
@@ -8,17 +7,10 @@ import pandas as pd
 from pathlib import Path
 from datetime import date
 from decouple import config
+from typing import List, Any
 from sqlalchemy import Engine
 from dataclasses import dataclass
 from urllib.parse import quote_plus
-
-
-# CSV Files
-DATA_DIR = Path("data")
-LOANS_CSV = DATA_DIR / "Loan-UK-2024-10-21.csv"
-DEALS_CSV = DATA_DIR / "Deal-UK-2024-10-21.csv"
-TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-10-21.csv"
-REPO_REPORT_XLSX = DATA_DIR / "RepoLight - 07-10-2024.xlsx"
 
 
 @dataclass
@@ -74,89 +66,108 @@ ORACLE_UK_DEAL_HISTORY = "FO_SEC_LN.DEAL_HISTORY"
 ORACLE_UK_TRANCHE_HISTORY = "FO_SEC_LN.TRANCHE_HISTORY"
 ORACLE_UK_CLO_ASSETS_DATA = "FO_SEC_LN.clo_deal_dtl"
 
+# CSV Files
+DATA_DIR = Path("data")
+LOANS_CSV = DATA_DIR / "Loan-UK-2024-10-21.csv"
+DEALS_CSV = DATA_DIR / "Deal-UK-2024-10-21.csv"
+TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-10-21.csv"
+REPO_REPORT_XLSX = DATA_DIR / "RepoLight - 07-10-2024.xlsx"
 
-def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
-    def to_snake_case(name: str) -> str:
-        if type(name) == str:
-            # Remove special characters.
-            name = re.sub(r'[^\w\s]', '', name)
-            # Convert to lowercase and replace spaces with underscores.
-            name = re.sub(r'\s+', '_', name.strip().lower())
-            # Remove consecutive underscores.
-            name = re.sub(r'_+', '_', name)
-        return name
+class QueryBuilder:
+
+    def __init__(self, table: str):
+        self.table = table
+        self.select_columns: List[str] = []
+        self.where_conditions: List[str] = []
+        self.order_by_columns: List[str] = []
+        self.limit_value: int | None = None
+
+    def select(self, *columns: str) -> 'QueryBuilder':
+        self.select_columns.extend(columns)
+        return self
     
-    # Create a dictionary to map old column names to new snake_case names.
-    column_mapping = {col: to_snake_case(col) for col in df.columns}
-    # Rename the columns using the mapping
-    df = df.rename(columns=column_mapping)
-    # Drop rows & columns full of NaNs.
-    df = df.dropna(how='all', axis=1)
-    df = df.dropna(how='all', axis=0)
+    def where(self, condition: str) -> 'QueryBuilder':
+        self.where_conditions.append(condition)
+        return self
+    
+    def order_by(self, *columns: str) -> 'QueryBuilder':
+        self.order_by_columns.extend(columns)
+        return self
+    
+    def limit(self, value: int) -> 'QueryBuilder':
+        self.limit_value = value
+        return self
+    
+    def build(self) -> str:
+        query = f"SELECT {', '.join(self.select_columns) or '*'} FROM {self.table}"
+        if self.where_conditions:
+            query += f" WHERE {' AND '.join(self.where_conditions)}"
+        if self.order_by_columns:
+            query += f" ORDER BY {', '.join(self.order_by_columns)}"
+        if self.limit_value:
+            query += f" LIMIT {self.limit_value}"
+        return query
+    
+    def execute(self, database: Engine, *args: Any, **kwargs: Any) -> pd.DataFrame:
+        query = self.build()
+        return pd.read_sql(query, database, *args, **kwargs)
+    
 
-    return df
+class Model:
+    table: str
+
+    @classmethod
+    def objects(cls) -> QueryBuilder:
+        return QueryBuilder(cls.table)
+    
+
+class Deal(Model):
+    table = ORACLE_UK_DEAL_HISTORY
 
 
-def tidy_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Tidies the column names of a dataframe by replacing underscores with spaces
-    and capitalising.
-    """
-    df.columns = df.columns.str.replace('_', ' ').str.upper()
-
-    return df
+class Tranche(Model):
+    table = ORACLE_UK_TRANCHE_HISTORY
 
 
-def get_latest_reporting_date(table: str, database: Engine) -> date:
-    query = f"""
-        SELECT MAX(deal_hist_date) as latest_date
-        FROM {table}
-    """
-
-    df = pd.read_sql(query, database, parse_dates=["latest_date"])
-    latest_date = df['latest_date'].iloc[0].date()
-
-    return latest_date
+class Asset(Model):
+    table = ORACLE_UK_CLO_ASSETS_DATA
 
 
 def load_deal(deal_id: str):
     """
-    Loads a single deal from the EU CLO universe.
+    Loads a single deal, its loans, and tranches from the EU CLO universe.
     """
     database = US_ORACLE_CONNECTION_PROD
-    report_date = get_latest_reporting_date(ORACLE_UK_DEAL_HISTORY, database)
+    report_date = (
+        Deal.objects()
+        .select("MAX(deal_hist_date) as latest_date")
+        .execute(database)
+    )['latest_date'].iloc[0].date()
 
-    deal_query = f"""
-    SELECT *
-    FROM {ORACLE_UK_DEAL_HISTORY}
-    WHERE 
-        TRUNC(deal_hist_date) = TO_DATE('{report_date}', 'YYYY-MM-DD')
-        AND deal_id = '{deal_id}'
-    """
-    tranches_query = f"""
-    SELECT *
-    FROM {ORACLE_UK_TRANCHE_HISTORY}
-    WHERE 
-        TRUNC(tranche_hist_date) = TO_DATE('{report_date}', 'YYYY-MM-DD')
-        AND deal_id = '{deal_id}'
-    """
-    loans_query = f"""
-    SELECT *
-    FROM {ORACLE_UK_CLO_ASSETS_DATA}
-    WHERE 
-        TRUNC(create_dt) = TO_DATE('{report_date}', 'YYYY-MM-DD')
-        AND deal_id = '{deal_id}'
-    """
-    
-    deal = pd.read_sql(deal_query, database)
-    loans = pd.read_sql(loans_query, database)
-    tranches = pd.read_sql(tranches_query, database)
+    deal = (
+        Deal.objects()
+        .where(f"deal_id = '{deal_id}'")
+        .where(f"TRUNC(deal_hist_date) = TO_DATE('{report_date}', 'YYYY-MM-DD')")
+        .execute(database)
+    )
+    loans = (
+        Asset.objects()
+        .where(f"deal_id = '{deal_id}'")
+        .where(f"TRUNC(create_dt) = TO_DATE('{report_date}', 'YYYY-MM-DD')")
+        .execute(database)
+    )
+    tranches = (
+        Tranche.objects()
+        .where(f"deal_id = '{deal_id}'")
+        .where(f"TRUNC(tranche_hist_date) = TO_DATE('{report_date}', 'YYYY-MM-DD')")
+        .execute(database)
+    )
 
     # Clean the dataframes
-    deal = clean_dataframe(deal)
-    loans = clean_dataframe(loans)
-    tranches = clean_dataframe(tranches)
+    deal = utils.clean_dataframe(deal)
+    loans = utils.clean_dataframe(loans)
+    tranches = utils.clean_dataframe(tranches)
 
     # Convert deal to a series.
     deal = deal.iloc[0]
@@ -179,9 +190,9 @@ def load_universe(
         tranches = pd.read_csv(tranches_csv)
 
     # Clean the dataframes
-    loans = clean_dataframe(loans)
-    deals = clean_dataframe(deals)
-    tranches = clean_dataframe(tranches)
+    loans = utils.clean_dataframe(loans)
+    deals = utils.clean_dataframe(deals)
+    tranches = utils.clean_dataframe(tranches)
 
     return deals, loans, tranches
 
@@ -214,7 +225,7 @@ def load_napier_holdings(repo_report_xlsx: Path = REPO_REPORT_XLSX) -> pd.DataFr
         repo_report = pd.read_excel(repo_report_xlsx)
 
     # Clean the dataframe
-    repo_report = clean_dataframe(repo_report)
+    repo_report = utils.clean_dataframe(repo_report)
 
     return repo_report
 
