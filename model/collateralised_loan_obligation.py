@@ -191,13 +191,6 @@ class CLO:
     @property
     def equity_nav_override(self) -> float:
         pass
-
-    @property
-    def in_reinvestment_period(self) -> bool:
-        """
-        Returns whether or not the CLO is in the reinvestment period.
-        """
-        return self.simulate_until <= self.reinvestment_end_date
     
     def simulate(self):
         """
@@ -207,6 +200,7 @@ class CLO:
         while self.continue_simulating:
             should_liquidate = self.simulate_until >= self.liquidation_date and not self.in_liquidation
             on_payment_date = self.simulate_until == self.next_payment_date
+            in_reinvestment_period = self.simulate_until <= self.reinvestment_end_date and not self.in_liquidation
             
             # Liquidate the CLO if we are past the liquidation date.
             if should_liquidate:
@@ -228,7 +222,7 @@ class CLO:
                 tranche.simulate(self.simulate_until)
                 
             self.principal_reinvested = 0
-            if self.in_reinvestment_period:
+            if in_reinvestment_period:
                 self.principal_reinvested = self.reinvest()
             
             # Run the cashflow waterfall on payment dates.
