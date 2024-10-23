@@ -9,25 +9,42 @@ from pathlib import Path
 from datetime import date
 from decouple import config
 from sqlalchemy import Engine
+from dataclasses import dataclass
 
 
 # CSV Files
 DATA_DIR = Path("data")
-LOANS_CSV = DATA_DIR / "Loan-UK-2024-10-07.csv"
-DEALS_CSV = DATA_DIR / "Deal-UK-2024-10-09.csv"
-TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-10-09.csv"
-REPO_REPORT_XLSX = DATA_DIR / "RepoLight - 23-09-2024.xlsx"
+LOANS_CSV = DATA_DIR / "Loan-UK-2024-10-21.csv"
+DEALS_CSV = DATA_DIR / "Deal-UK-2024-10-21.csv"
+TRANCHES_CSV = DATA_DIR / "Tranche-UK-2024-10-21.csv"
+REPO_REPORT_XLSX = DATA_DIR / "RepoLight - 07-10-2024.xlsx"
+
+
+@dataclass
+class EnginePath:
+    dialect: str
+    sql_driver: str
+    username: str
+    password: str
+    host: str
+    port: str
+    service: str
+
+    def format(self) -> str:
+        return f"{self.dialect}+{self.sql_driver}://{self.username}:{self.password}@{self.host}:{self.port}/{self.service}"
+
 
 # DB Connections
-DIALECT = 'oracle'
-SQL_DRIVER = 'cx_oracle'
-USERNAME = config('US_ORACLE_PROD_USERNAME')
-PASSWORD = config('US_ORACLE_PROD_PASSWORD')
-HOST = config('US_ORACLE_PROD_HOST')
-PORT = config('US_ORACLE_PROD_PORT')
-SERVICE = 'PLI'
-ENGINE_PATH_WITH_AUTH = f"{DIALECT}+{SQL_DRIVER}://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{SERVICE}"
-US_ORACLE_CONNECTION_PROD = sqlalchemy.create_engine(ENGINE_PATH_WITH_AUTH)
+US_ORACLE_ENGINE_PATH = EnginePath(
+    dialect='oracle',
+    sql_driver='cx_oracle',
+    username=config('US_ORACLE_PROD_USERNAME'),
+    password=config('US_ORACLE_PROD_PASSWORD'),
+    host=config('US_ORACLE_PROD_HOST'),
+    port=config('US_ORACLE_PROD_PORT'),
+    service='PLI'
+).format()
+US_ORACLE_CONNECTION_PROD = sqlalchemy.create_engine(US_ORACLE_ENGINE_PATH)
 
 # Oracle Tables
 ORACLE_CURVES = "FO_SEC.CF_VECTOR_ITX_RATES"
@@ -54,6 +71,28 @@ def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = df.dropna(how='all', axis=0)
 
     return df
+
+
+def tidy_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Tidies the column names of a dataframe by replacing underscores with spaces
+    and capitalising.
+    """
+    df.columns = df.columns.str.replace('_', ' ').str.upper()
+
+    return df
+
+
+def get_latest_reporting_date(table: str, database: Engine) -> date:
+    query = f"""
+        SELECT MAX(reporting_date) as latest_date
+        FROM {table}
+    """
+
+    df = pd.read_sql(query, database, parse_dates=["latest_date"])
+    latest_date = df['latest_date'].iloc[0]
+
+    return latest_date
 
 
 @functools.lru_cache(maxsize=1)
