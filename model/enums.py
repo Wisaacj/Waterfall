@@ -32,6 +32,7 @@ class AssetKind(Enum):
     """
     Loan = "loan"
     Bond = "bond"
+    Equity = "equity"
 
     def __str__(self) -> str:
         return self.value
@@ -42,14 +43,6 @@ class AssetKind(Enum):
             return AssetKind(value.lower())
         except ValueError:
             raise ValueError(f"'{value}' is not a valid AssetKind")
-
-
-class AssetType(Enum):
-    """
-    Enumerates the possible types of assets.
-    """
-    FloatingRate = "floating"
-    FixedRate = "fixed"
 
 
 class LiquidationType(Enum):

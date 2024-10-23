@@ -1,15 +1,16 @@
 import re
-import warnings
-import pandas as pd
-import sqlalchemy
 import utils
+import warnings
 import functools
+import sqlalchemy
+import pandas as pd
 
 from pathlib import Path
 from datetime import date
 from decouple import config
 from sqlalchemy import Engine
 from dataclasses import dataclass
+from urllib.parse import quote_plus
 
 
 # CSV Files
@@ -38,16 +39,40 @@ class EnginePath:
 US_ORACLE_ENGINE_PATH = EnginePath(
     dialect='oracle',
     sql_driver='cx_oracle',
-    username=config('US_ORACLE_PROD_USERNAME'),
-    password=config('US_ORACLE_PROD_PASSWORD'),
+    username=quote_plus(config('US_ORACLE_PROD_USERNAME')),
+    password=quote_plus(config('US_ORACLE_PROD_PASSWORD')),
     host=config('US_ORACLE_PROD_HOST'),
     port=config('US_ORACLE_PROD_PORT'),
     service='PLI'
 ).format()
-US_ORACLE_CONNECTION_PROD = sqlalchemy.create_engine(US_ORACLE_ENGINE_PATH)
+UK_ORACLE_ENGINE_PATH = EnginePath(
+    dialect='oracle',
+    sql_driver='cx_oracle',
+    username=quote_plus(config('UK_ORACLE_PROD_USERNAME')),
+    password=quote_plus(config('UK_ORACLE_PROD_PASSWORD')),
+    host=config('UK_ORACLE_PROD_HOST'),
+    port=config('UK_ORACLE_PROD_PORT'),
+    service='PLI'
+).format()
+EU_CREDIT_PROD_ENGINE_PATH = EnginePath(
+    dialect='mysql',
+    sql_driver='pymysql',
+    username=quote_plus(config('EU_CREDIT_PROD_USERNAME')),
+    password=quote_plus(config('EU_CREDIT_PROD_PASSWORD')),
+    host=config('EU_CREDIT_PROD_HOST'),
+    port=config('EU_CREDIT_PROD_PORT'),
+    service='eu_credit_reporting'
+).format()
 
-# Oracle Tables
+US_ORACLE_CONNECTION_PROD = sqlalchemy.create_engine(US_ORACLE_ENGINE_PATH)
+UK_ORACLE_CONNECTION_PROD = sqlalchemy.create_engine(UK_ORACLE_ENGINE_PATH)
+EU_CREDIT_CONNECTION_PROD = sqlalchemy.create_engine(EU_CREDIT_PROD_ENGINE_PATH)
+
+# Tables
 ORACLE_CURVES = "FO_SEC.CF_VECTOR_ITX_RATES"
+ORACLE_UK_DEAL_HISTORY = "FO_SEC_LN.DEAL_HISTORY"
+ORACLE_UK_TRANCHE_HISTORY = "FO_SEC_LN.TRANCHE_HISTORY"
+ORACLE_UK_CLO_ASSETS_DATA = "FO_SEC_LN.clo_deal_dtl"
 
 
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -85,14 +110,58 @@ def tidy_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 def get_latest_reporting_date(table: str, database: Engine) -> date:
     query = f"""
-        SELECT MAX(reporting_date) as latest_date
+        SELECT MAX(deal_hist_date) as latest_date
         FROM {table}
     """
 
     df = pd.read_sql(query, database, parse_dates=["latest_date"])
-    latest_date = df['latest_date'].iloc[0]
+    latest_date = df['latest_date'].iloc[0].date()
 
     return latest_date
+
+
+def load_deal(deal_id: str):
+    """
+    Loads a single deal from the EU CLO universe.
+    """
+    database = US_ORACLE_CONNECTION_PROD
+    report_date = get_latest_reporting_date(ORACLE_UK_DEAL_HISTORY, database)
+
+    deal_query = f"""
+    SELECT *
+    FROM {ORACLE_UK_DEAL_HISTORY}
+    WHERE 
+        TRUNC(deal_hist_date) = TO_DATE('{report_date}', 'YYYY-MM-DD')
+        AND deal_id = '{deal_id}'
+    """
+    tranches_query = f"""
+    SELECT *
+    FROM {ORACLE_UK_TRANCHE_HISTORY}
+    WHERE 
+        TRUNC(tranche_hist_date) = TO_DATE('{report_date}', 'YYYY-MM-DD')
+        AND deal_id = '{deal_id}'
+    """
+    loans_query = f"""
+    SELECT *
+    FROM {ORACLE_UK_CLO_ASSETS_DATA}
+    WHERE 
+        TRUNC(create_dt) = TO_DATE('{report_date}', 'YYYY-MM-DD')
+        AND deal_id = '{deal_id}'
+    """
+    
+    deal = pd.read_sql(deal_query, database)
+    loans = pd.read_sql(loans_query, database)
+    tranches = pd.read_sql(tranches_query, database)
+
+    # Clean the dataframes
+    deal = clean_dataframe(deal)
+    loans = clean_dataframe(loans)
+    tranches = clean_dataframe(tranches)
+
+    # Convert deal to a series.
+    deal = deal.iloc[0]
+
+    return deal, loans, tranches
 
 
 @functools.lru_cache(maxsize=1)
@@ -117,7 +186,7 @@ def load_universe(
     return deals, loans, tranches
 
 
-def load_deal(deal_id: str):
+def load_deal_from_disk(deal_id: str):
     deals, loans, tranches = load_universe()
 
     # Filter for the relevant deal.
