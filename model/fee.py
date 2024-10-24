@@ -10,7 +10,13 @@ class Fee(InterestVehicle):
     """
     Class representing a fee with an interest rate and fixed component.
     """
-    def __init__(self, balance: float, coupon: float, report_date: date, fee_name: WaterfallItem, fixed_expense: float = 0):
+    def __init__(self, 
+                 balance: float, 
+                 coupon: float, 
+                 report_date: date, 
+                 fee_name: WaterfallItem, 
+                 fixed_expense: float = 0,
+                 rebate_rate: float = 0):
         """
         Instantiates a Fee.
         
@@ -18,12 +24,14 @@ class Fee(InterestVehicle):
         :param coupon: the rate at which the fee accrues interest.
         :param report_date: the date the deal report was generated on.
         :param fee_name: the type of fee.
-        :param fixedExpense: an optional annual fixed expense.
+        :param fixed_expense: an optional annual fixed expense.
+        :param rebate_rate: an optional fee rebate diverted from the CLO manager to the equity tranche.
         """
         super().__init__(balance, coupon, report_date)
         
         self.name = fee_name.value
         self.fixed_expense = fixed_expense
+        self.rebate_pct = rebate_rate / self.interest_rate
         self.clo_call_date = date(9999, 12, 31)
         
         # Take a snapshot of the inital values of the fee's attributes.
@@ -61,18 +69,25 @@ class Fee(InterestVehicle):
         self.interest_accrued += period_fixed_expense
         self.period_accrual += period_fixed_expense
     
-    def pay(self, source: Account, attribute_source: PaymentSource):
+    def pay(self, source: Account, attribute_source: PaymentSource) -> float:
         """
         Attempts to pay the amount accrued on the fee.
         
         :param source: an interest account to debit from.
         :param attribute_source: this is not used and is only here to satisfy calls from CashflowWaterfalls.
+        :return: the amount of the rebate (if any).
         """
         amount_paid = source.request_debit(self.interest_accrued)
+        rebate_amount = amount_paid * self.rebate_pct
+        actual_fee = amount_paid - rebate_amount
+
         self.interest_accrued -= amount_paid
-        self.interest_paid += amount_paid
+        self.interest_paid += actual_fee
+
+        # Credit the rebate back to the source account for the equity tranche to collect.
+        source.credit(rebate_amount)
         
-        self.log_payment_in_history(amount_paid)
+        self.log_payment_in_history(actual_fee, rebate_amount)
 
     def notify_of_liquidation(self, liquidation_date: date):
         """
@@ -80,13 +95,15 @@ class Fee(InterestVehicle):
         """
         self.clo_call_date = liquidation_date
         
-    def log_payment_in_history(self, payment: float):
+    def log_payment_in_history(self, fee_paid: float, rebate_amount: float):
         """
         Sums the given payment with the amount paid in the most recent snapshot in the history
         
-        :param payment: an amount to log.
+        :param fee_paid: an amount to log.
+        :param rebate_amount: an amount to log.
         """
-        self.last_snapshot.paid += payment
+        self.last_snapshot.paid += fee_paid
+        self.last_snapshot.rebate += rebate_amount
     
     def take_snapshot(self, as_of_date: date):
         """
@@ -142,4 +159,4 @@ class IncentiveFee(Fee):
         # Floor the balance at 0.
         self.balance = max(self.balance, 0)
 
-        self.log_payment_in_history(payment)
+        self.log_payment_in_history(payment, 0)

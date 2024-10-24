@@ -23,6 +23,7 @@ class Arguments:
     output_asset_cashflows: bool
     liquidation_type: LiquidationType
     use_top_down_defaults: bool
+    fee_rebate: float
     deal_id: Optional[str] = None
     accrual_date: Optional[date] = None
     liquidation_date: Optional[date] = None
@@ -54,3 +55,4 @@ class CLOArgumentParser(argparse.ArgumentParser):
         self.add_argument("--output_asset_cashflows", type=bool, default=True, help="Output asset cashflows to CSV (default: True)")
         self.add_argument("--liquidation_type", type=LiquidationType, choices=list(LiquidationType), default=LiquidationType.NAV90, help="Type of liquidation pricing to use (default: NAV)")
         self.add_argument("--use_top_down_defaults", action="store_true", help="Use top-down defaults (default: False)")
+        self.add_argument("--fee_rebate", type=float, default=0, help="Fee rebate diverted from the CLO Manager's Junior Management Fee to the Equity Tranche, in basis points (default: 0)")

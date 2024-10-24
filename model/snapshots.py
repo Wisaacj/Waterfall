@@ -66,6 +66,7 @@ class TrancheSnapshot(Snapshot):
     pct_amortization: float = 0
     coupon: float = 0
     base_rate: float = 0
+    fee_rebate: float = 0
     
     
 @dataclass
@@ -75,3 +76,4 @@ class FeeSnapshot(Snapshot):
     period_accrual: float = 0
     accrued: float = 0
     paid: float = 0
+    rebate: float = 0

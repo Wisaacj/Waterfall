@@ -38,13 +38,16 @@ class CLOFactory:
     ):
         self.report_date = date.today()
 
+        # Convert the fee rebate from basis points to a percentage.
+        args.fee_rebate = args.fee_rebate / 10000
+
         # Factories
         self.tranche_factory = TrancheFactory(tranche_data, self.report_date)
         self.portfolio_factory = PortfolioFactory(collateral_data, self.report_date, 
                                                   args.cpr, args.cdr, args.recovery_rate, 
                                                   args.cpr_lockout_months, args.cdr_lockout_months,
                                                   args.use_top_down_defaults)
-        self.fee_factory = FeeFactory(deal_data, self.report_date)
+        self.fee_factory = FeeFactory(deal_data, self.report_date, args.fee_rebate)
         self.account_factory = AccountFactory(deal_data)
         self.forward_curve_factory = ForwardRateCurveFactory(forward_curve_data)
 
@@ -238,9 +241,10 @@ class FeeFactory:
     Model factory for building a set of fees paid in a CLO.
     """
 
-    def __init__(self, deal_data: pd.DataFrame, report_date: date):
+    def __init__(self, deal_data: pd.DataFrame, report_date: date, fee_rebate: float):
         self.deal_data = deal_data
         self.report_date = report_date
+        self.fee_rebate = fee_rebate
 
     def build(self):
         senior_expenses_fixed_fee = 300_000 
@@ -255,12 +259,11 @@ class FeeFactory:
 
         # The fees' balances are set later by the CLO.
         senior_expenses_fee = Fee(0, senior_expenses_variable_fee,
-                               self.report_date, WaterfallItem.SeniorExpensesFee,
-                                 senior_expenses_fixed_fee)
+                               self.report_date, WaterfallItem.SeniorExpensesFee, senior_expenses_fixed_fee)
         senior_management_fee = Fee(0, senior_management_fee,
                          self.report_date, WaterfallItem.SeniorMgmtFee)
         junior_management_fee = Fee(0, junior_management_fee,
-                         self.report_date, WaterfallItem.JuniorMgmtFee)
+                         self.report_date, WaterfallItem.JuniorMgmtFee, 0, self.fee_rebate)
         
         incentive_fee = IncentiveFee(incentive_fee_balance, incentive_fee_hurdle_rate,
                                       incentive_fee_diversion_rate, self.report_date)
