@@ -76,8 +76,9 @@ REPO_REPORT_XLSX = DATA_DIR / "RepoLight - 07-10-2024.xlsx"
 
 class QueryBuilder:
 
-    def __init__(self, table: str):
+    def __init__(self, table: str, engine: Engine):
         self.table = table
+        self.engine = engine
         self.select_columns: List[str] = []
         self.where_conditions: List[str] = []
         self.order_by_columns: List[str] = []
@@ -109,59 +110,61 @@ class QueryBuilder:
             query += f" LIMIT {self.limit_value}"
         return query
     
-    def execute(self, database: Engine, *args: Any, **kwargs: Any) -> pd.DataFrame:
+    def execute(self, *args: Any, **kwargs: Any) -> pd.DataFrame:
         query = self.build()
-        return pd.read_sql(query, database, *args, **kwargs)
+        return pd.read_sql(query, self.engine, *args, **kwargs)
     
 
 class Model:
     table: str
+    db_engine: Engine
 
     @classmethod
     def objects(cls) -> QueryBuilder:
-        return QueryBuilder(cls.table)
+        return QueryBuilder(cls.table, cls.db_engine)
     
 
 class Deal(Model):
     table = ORACLE_UK_DEAL_HISTORY
+    db_engine = US_ORACLE_CONNECTION_PROD
 
 
 class Tranche(Model):
     table = ORACLE_UK_TRANCHE_HISTORY
-
+    db_engine = US_ORACLE_CONNECTION_PROD
 
 class Asset(Model):
     table = ORACLE_UK_CLO_ASSETS_DATA
+    db_engine = US_ORACLE_CONNECTION_PROD
 
 
 def load_deal(deal_id: str):
     """
     Loads a single deal, its loans, and tranches from the EU CLO universe.
     """
-    database = US_ORACLE_CONNECTION_PROD
     report_date = (
         Deal.objects()
         .select("MAX(deal_hist_date) as latest_date")
-        .execute(database)
+        .execute()
     )['latest_date'].iloc[0].date()
 
     deal = (
         Deal.objects()
         .where(f"deal_id = '{deal_id}'")
         .where(f"TRUNC(deal_hist_date) = TO_DATE('{report_date}', 'YYYY-MM-DD')")
-        .execute(database)
+        .execute()
     )
     loans = (
         Asset.objects()
         .where(f"deal_id = '{deal_id}'")
         .where(f"TRUNC(create_dt) = TO_DATE('{report_date}', 'YYYY-MM-DD')")
-        .execute(database)
+        .execute()
     )
     tranches = (
         Tranche.objects()
         .where(f"deal_id = '{deal_id}'")
         .where(f"TRUNC(tranche_hist_date) = TO_DATE('{report_date}', 'YYYY-MM-DD')")
-        .execute(database)
+        .execute()
     )
 
     # Clean the dataframes
